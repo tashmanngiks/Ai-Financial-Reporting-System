@@ -1,0 +1,6 @@
+{
+    "postman.settings.dotenv-detection-notification-visibility": false,
+    "python.defaultInterpreterPath": "c:/Users/Mstavo/Desktop/Ai Financial Analytics System/backend/venv/Scripts/python.exe",
+    "python.terminal.activateEnvironment": true,
+    "editor.gotoLocation.multipleDefinitions": "goto"
+}

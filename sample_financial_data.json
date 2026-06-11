@@ -1,0 +1,44 @@
+{
+  "bank_name": "Sample Bank",
+  "period": "Q1 2026",
+  "accounts": [
+    {
+      "account_number": "123456789",
+      "account_type": "Checking",
+      "balance": 15000.50,
+      "transactions": [
+        {
+          "date": "2026-01-15",
+          "description": "Salary Deposit",
+          "amount": 5000.00,
+          "type": "credit"
+        },
+        {
+          "date": "2026-01-20",
+          "description": "Grocery Shopping",
+          "amount": -250.75,
+          "type": "debit"
+        }
+      ]
+    },
+    {
+      "account_number": "987654321",
+      "account_type": "Savings",
+      "balance": 25000.00,
+      "transactions": [
+        {
+          "date": "2026-01-10",
+          "description": "Interest Payment",
+          "amount": 125.00,
+          "type": "credit"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total_assets": 40000.50,
+    "total_income": 5125.00,
+    "total_expenses": 250.75,
+    "net_change": 4874.25
+  }
+}
