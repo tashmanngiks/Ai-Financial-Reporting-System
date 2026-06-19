@@ -47,7 +47,7 @@ def create_database():
     print("🗄️ Creating database...")
     
     # Check if database already exists
-    result = run_command('psql -U postgres -lqt | cut -d \| -f 1 | grep -qw financial_analytics')
+    result = run_command('psql -U postgres -lqt | cut -d \\| -f 1 | grep -qw financial_analytics')
     if result and result.returncode == 0:
         print("✅ Database 'financial_analytics' already exists")
         return True
