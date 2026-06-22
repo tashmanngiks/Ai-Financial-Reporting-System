@@ -30,6 +30,7 @@ def simple_custom_prompt_view(request):
         body = json.loads(request.body)
         report_id = body.get('report_id')
         custom_prompt = body.get('prompt')
+        report_options = body.get('report_options') or {}
 
         if not report_id or not custom_prompt:
             return JsonResponse({'error': 'report_id and prompt are required'}, status=400)
@@ -53,6 +54,7 @@ def simple_custom_prompt_view(request):
                 'sample_data': original_json if isinstance(original_json, dict) else {'data': original_json},
             },
             'user_prompt': custom_prompt,
+            'report_options': report_options,
         })
 
         if analysis_result and analysis_result.get('success'):
@@ -75,6 +77,21 @@ def simple_custom_prompt_view(request):
 def simple_upload_view(request):
     """Simple Django upload view - no DRF."""
     try:
+        body = {}
+        if request.body:
+            try:
+                body = json.loads(request.body)
+            except json.JSONDecodeError:
+                body = {}
+
+        report_options = {}
+        raw_report_options = request.POST.get('report_options') or body.get('report_options')
+        if raw_report_options:
+            try:
+                report_options = json.loads(raw_report_options) if isinstance(raw_report_options, str) else raw_report_options
+            except json.JSONDecodeError:
+                report_options = {}
+
         if 'file' not in request.FILES:
             return JsonResponse({'error': 'No file provided'}, status=400)
 
@@ -107,6 +124,15 @@ def simple_upload_view(request):
             prompt,
             original_json,
             ai_analysis,
+            report_options=report_options or {
+                'template': request.POST.get('template') or body.get('template'),
+                'sections': body.get('sections') or request.POST.get('sections') or [],
+                'include_sections': body.get('include_sections') or request.POST.get('include_sections') or [],
+                'exclude_sections': body.get('exclude_sections') or request.POST.get('exclude_sections') or [],
+                'length': body.get('length') or request.POST.get('length'),
+                'detail_level': body.get('detail_level') or request.POST.get('detail_level'),
+                'output_format': body.get('output_format') or request.POST.get('output_format'),
+            },
         )
         comprehensive_generated = len(full_ai_analysis) > 0 and ai_enhanced
 

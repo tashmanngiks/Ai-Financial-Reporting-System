@@ -15,9 +15,11 @@ from .api.reports import (
     TrendAnalysisView,
     generate_comprehensive_report,
     get_insights,
+    get_report_prompt_config,
     get_report_templates,
     preview_report,
     regenerate_insights,
+    update_report_prompt_config,
     simple_custom_report_view,
     simple_export_view,
     simple_report_detail_view,
@@ -73,6 +75,8 @@ urlpatterns = [
     path('simple-reports/<uuid:report_id>/generate/', generate_comprehensive_report),
     # Get report templates
     path('simple-reports/templates/', get_report_templates),
+    path('simple-reports/prompt-config/', get_report_prompt_config),
+    path('simple-reports/prompt-config/update/', update_report_prompt_config),
     # Preview report
     path('simple-reports/<uuid:report_id>/preview/', preview_report),
     path('analyze/direct/', analyze_direct_data, name='analyze_direct'),

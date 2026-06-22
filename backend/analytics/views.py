@@ -26,24 +26,13 @@ from docx import Document
 import openpyxl
 from openpyxl.styles import Font, Alignment
 
+from .services.dynamic_report_builder import build_dynamic_report_sections, build_report_context
+from .services.report_prompt_registry import get_report_prompt_registry
+
 # Simple in-memory storage for testing
 GLOBAL_REPORTS = {}
 
-# Report templates for different report types
-REPORT_TEMPLATES = {
-    'executive_summary': {
-        'sections': ['key_metrics', 'profitability', 'liquidity', 'risk_assessment'],
-        'format': 'executive'
-    },
-    'detailed_analysis': {
-        'sections': ['overview', 'ratio_analysis', 'trend_analysis', 'recommendations'],
-        'format': 'detailed'
-    },
-    'regulatory_compliance': {
-        'sections': ['capital_adequacy', 'risk_metrics', 'compliance_status'],
-        'format': 'compliance'
-    }
-}
+REPORT_TEMPLATES = get_report_prompt_registry().get_templates()
 
 def get_global_reports():
     """Get global reports (handles module reloading issues)"""
@@ -200,7 +189,7 @@ def normalize_json_for_analysis(json_data):
     return {'value': json_data}, original
 
 
-def generate_analysis_from_prompt(prompt, json_data, ai_analysis):
+def generate_analysis_from_prompt(prompt, json_data, ai_analysis, report_options=None):
     """Generate comprehensive report sections from the user's prompt using AI only."""
     bank_name, data_period = extract_entity_metadata(json_data)
     normalized_data, _ = normalize_json_for_analysis(json_data)
@@ -213,6 +202,7 @@ def generate_analysis_from_prompt(prompt, json_data, ai_analysis):
         'existing_analysis': ai_analysis,
         'data_summary': build_data_summary(json_data),
         'user_prompt': prompt,
+        'report_options': report_options or {},
     }
 
     analysis_result = generate_comprehensive_ai_analysis(analysis_context)
@@ -1058,6 +1048,7 @@ def analyze_direct_data(request):
     """Analyze financial data provided directly in request"""
     try:
         data = request.data.get('financial_data')
+        report_options = request.data.get('report_options') or {}
         if not data:
             return Response(
                 {'error': 'financial_data is required'},
@@ -1070,7 +1061,7 @@ def analyze_direct_data(request):
         
         # Generate report
         generator = FinancialReportGenerator()
-        report_data = generator.generate_complete_report(parsed_data)
+        report_data = generator.generate_complete_report(parsed_data, report_options=report_options)
         
         return Response(report_data)
         
@@ -1142,6 +1133,17 @@ def regenerate_insights(request, report_id):
     try:
         from .services.report_store import get_report, update_report
 
+        report_options = {}
+        if hasattr(request, 'data') and isinstance(request.data, dict):
+            report_options = request.data.get('report_options') or {}
+        elif request.body:
+            try:
+                body = json.loads(request.body)
+                if isinstance(body, dict):
+                    report_options = body.get('report_options') or {}
+            except json.JSONDecodeError:
+                report_options = {}
+
         report = get_report(str(report_id))
 
         if report:
@@ -1161,7 +1163,7 @@ def regenerate_insights(request, report_id):
 
             ai_analysis = perform_initial_ai_analysis(original_json)
             sections, error_msg, ai_enhanced = generate_analysis_from_prompt(
-                user_prompt, original_json, ai_analysis
+                user_prompt, original_json, ai_analysis, report_options=report_options
             )
 
             if sections and ai_enhanced:
@@ -1171,6 +1173,7 @@ def regenerate_insights(request, report_id):
                     'generated_at': generated_at,
                     'comprehensive_generated': True,
                     'ai_enhanced': True,
+                    'report_options': report_options or metadata.get('report_options', {}),
                 })
                 report_updates = {
                     'comprehensive_analysis': sections,
@@ -1178,6 +1181,7 @@ def regenerate_insights(request, report_id):
                     'ai_error': None,
                     'status': 'completed',
                     'metadata': metadata,
+                    'report_options': report_options or report.get('report_options', {}),
                 }
                 update_report(str(report_id), report_updates, request=request)
                 return Response({
@@ -1250,6 +1254,15 @@ class CustomReportView(APIView):
                     {'error': 'Prompt is required'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            report_options = request.data.get('report_options') or {
+                'template': request.data.get('template'),
+                'sections': request.data.get('sections') or request.data.get('selected_sections') or [],
+                'include_sections': request.data.get('include_sections') or [],
+                'exclude_sections': request.data.get('exclude_sections') or [],
+                'length': request.data.get('length'),
+                'detail_level': request.data.get('detail_level'),
+                'output_format': request.data.get('format'),
+            }
             
             # Get original data
             original_data = {
@@ -1261,7 +1274,7 @@ class CustomReportView(APIView):
             
             # Generate custom report using prompt
             insight_engine = FinancialInsightEngine()
-            custom_report = insight_engine.generate_custom_report(prompt, original_data, report)
+            custom_report = insight_engine.generate_custom_report(prompt, original_data, report, report_options=report_options)
             
             # Save custom report
             report.custom_prompt = prompt
@@ -1577,9 +1590,11 @@ def simple_export_view(request, report_id):
 def get_report_templates(request):
     """Get available report templates"""
     try:
+        registry = get_report_prompt_registry()
         return JsonResponse({
             'success': True,
-            'templates': REPORT_TEMPLATES
+            'templates': registry.get_templates(),
+            'section_library': registry.get_section_library()
         })
     except Exception as e:
         return JsonResponse({
@@ -1594,8 +1609,18 @@ def generate_comprehensive_report(request, report_id):
     try:
         # Get request data
         body = json.loads(request.body) if request.method == 'POST' else {}
-        template_type = body.get('template', 'standard')
-        format_type = body.get('format', 'json')
+        registry = get_report_prompt_registry()
+        report_options = registry.build_report_options({
+            'template': body.get('template', 'standard'),
+            'sections': body.get('sections') or body.get('selected_sections') or [],
+            'include_sections': body.get('include_sections') or [],
+            'exclude_sections': body.get('exclude_sections') or [],
+            'length': body.get('length'),
+            'detail_level': body.get('detail_level'),
+            'output_format': body.get('format', 'json'),
+        })
+        template_type = report_options.get('template', 'custom')
+        format_type = report_options.get('output_format', 'json')
         
         # Find report in session or global storage
         report = None
@@ -1617,15 +1642,18 @@ def generate_comprehensive_report(request, report_id):
             return JsonResponse({'error': 'Report not found'}, status=404)
         
         # Generate comprehensive report based on template
-        template = REPORT_TEMPLATES.get(template_type, REPORT_TEMPLATES['executive_summary'])
+        templates = registry.get_templates()
+        template = templates.get(template_type, templates.get('custom', {}))
+        sections = report_options.get('sections') or template.get('sections', [])
         generated_report = {
             'report_id': report_id,
             'template_used': template_type,
-            'sections': generate_report_sections(template['sections'], report),
+            'sections': generate_report_sections(sections, report),
             'metadata': {
                 'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 'template_version': '1.0',
-                'word_count': count_report_words(report)
+                'word_count': count_report_words(report),
+                'report_options': report_options,
             }
         }
         
@@ -1655,6 +1683,7 @@ def generate_comprehensive_report(request, report_id):
 def preview_report(request, report_id):
     """Preview report before generation"""
     try:
+        registry = get_report_prompt_registry()
         # Find report
         report = None
         session_reports = request.session.get('reports', [])
@@ -1679,8 +1708,8 @@ def preview_report(request, report_id):
             'report_id': report_id,
             'bank_name': report.get('bank_name'),
             'data_period': report.get('data_period'),
-            'preview_sections': generate_report_sections(['key_metrics', 'profitability'], report),
-            'available_templates': REPORT_TEMPLATES
+            'preview_sections': generate_report_sections(['executive_summary', 'statistical_highlights'], report),
+            'available_templates': registry.get_templates()
         }
         
         return JsonResponse(preview_data)
@@ -1691,8 +1720,28 @@ def preview_report(request, report_id):
 def generate_report_sections(sections, report_data):
     """Generate individual report sections"""
     generated_sections = {}
+    dynamic_sections = {
+        'executive_summary',
+        'statistical_highlights',
+        'money_market_analysis',
+        'wacc_analysis',
+        'financial_ratios',
+        'investment_analysis',
+        'macroeconomic_indicators',
+        'country_risk_analysis',
+        'market_trends',
+        'trend_analysis',
+        'risk_assessment',
+        'benchmark_comparison',
+        'recommendations',
+    }
     
     for section in sections:
+        if section in dynamic_sections:
+            built = build_dynamic_report_sections([section], report_data)
+            if built:
+                generated_sections[section] = built[0]
+                continue
         if section == 'key_metrics':
             generated_sections[section] = generate_key_metrics_section(report_data)
         elif section == 'profitability':
@@ -1714,7 +1763,8 @@ def generate_report_sections(sections, report_data):
         elif section == 'compliance_status':
             generated_sections[section] = generate_compliance_status_section(report_data)
         else:
-            generated_sections[section] = f"Section {section} not implemented yet"
+            built = build_dynamic_report_sections([section], report_data)
+            generated_sections[section] = built[0] if built else f"Section {section} not implemented yet"
     
     return generated_sections
 
@@ -1890,6 +1940,15 @@ def simple_custom_report_view(request, report_id=None):
         # Get request data
         data = json.loads(request.body) if request.body else {}
         prompt = data.get('prompt', '')
+        report_options = data.get('report_options') or {
+            'template': data.get('template'),
+            'sections': data.get('sections') or data.get('selected_sections') or [],
+            'include_sections': data.get('include_sections') or [],
+            'exclude_sections': data.get('exclude_sections') or [],
+            'length': data.get('length'),
+            'detail_level': data.get('detail_level'),
+            'output_format': data.get('format'),
+        }
         
         if not prompt:
             return JsonResponse({'error': 'Prompt is required'}, status=400)
@@ -1927,6 +1986,7 @@ def simple_custom_report_view(request, report_id=None):
                 prompt,
                 original_json,
                 report.get('ai_analysis', {}),
+                report_options=report_options,
             )
             
             if sections and ai_enhanced:
@@ -2167,51 +2227,55 @@ def generate_comprehensive_ai_analysis(context):
             print("DEBUG: OpenAI API key not found")
             return {'success': False, 'error': 'OpenAI API key not configured. Set OPENAI_API_KEY in backend/.env and restart the server.'}
 
+        registry = get_report_prompt_registry()
         financial_payload = context.get('raw_financial_data', context.get('financial_data', {}))
         financial_json = serialize_json_for_ai(financial_payload)
         data_summary_json = serialize_json_for_ai(context.get('data_summary', {}), max_chars=4000)
         user_prompt = context.get('user_prompt', 'comprehensive analysis')
+        report_options = registry.build_report_options(context.get('report_options') or {})
+        report_context = build_report_context(context.get('financial_data', {}))
+        report_context.update({
+            'bank_name': context.get('bank_name', 'Financial Dataset'),
+            'data_period': context.get('data_period', 'Unknown Period'),
+        })
+        system_prompt = registry.build_system_prompt(report_context, report_options)
+        section_prompts = [
+            {
+                "section": section,
+                "instruction": registry.get_section_prompt(section, report_context),
+            }
+            for section in report_options.get('sections', [])
+        ]
 
-        system_prompt = f"""You are a senior financial analyst. Analyze the uploaded JSON dataset for {context.get('bank_name', 'Financial Dataset')} ({context.get('data_period', 'Unknown Period')}).
-
-The JSON may be any structure: nested objects, arrays, dashboards, or flat key-value data. Infer meaning from field names and values.
-
-DATA SUMMARY:
-{data_summary_json}
-
-FULL JSON DATA:
-{financial_json}
-
-USER ANALYSIS REQUEST (follow this closely):
-{user_prompt}
-
-Return ONLY valid JSON with this shape:
-{{
-  "sections": [
-    {{
-      "title": "Section title",
-      "content": {{
-        "content": "Detailed narrative analysis",
-        "key_points": ["point 1", "point 2"],
-        "recommendations": ["recommendation 1"]
-      }}
-    }}
-  ]
-}}
-
-When the user requests a management financial report, use these section titles in order:
-1. Executive Summary
-2. Financial Position Analysis (Assets and Loans)
-3. Risk & Duration Analysis
-4. Efficiency & Cost Analysis
-5. Liquidity Assessment
-6. Key Findings
-7. Strategic Recommendations
-8. Conclusion
-
-For each section: interpret metrics, ratios, and durations from the JSON; explain implications for profitability, risk, liquidity, and operational efficiency; use management-style concise commentary; include key_points and recommendations where relevant.
-
-Use numbers from the JSON when available. Do not invent data that is not supported by the file."""
+        system_prompt += (
+            "\nDATA SUMMARY:\n"
+            f"{data_summary_json}\n\n"
+            "FULL JSON DATA:\n"
+            f"{financial_json}\n\n"
+            "USER ANALYSIS REQUEST:\n"
+            f"{user_prompt}\n\n"
+            "Section instructions:\n"
+            + "\n".join(
+                f"- {item['section']}: {item['instruction']}" for item in section_prompts
+            )
+            + "\n\nReturn ONLY valid JSON with this shape:\n"
+            '{\n'
+            '  "sections": [\n'
+            '    {\n'
+            '      "title": "Section title",\n'
+            '      "content": {\n'
+            '        "content": "Detailed narrative analysis",\n'
+            '        "key_points": ["point 1", "point 2"],\n'
+            '        "recommendations": ["recommendation 1"],\n'
+            '        "charts": [],\n'
+            '        "tables": [],\n'
+            '        "statistical_highlights": {}\n'
+            '      }\n'
+            '    }\n'
+            '  ]\n'
+            '}\n'
+            "Do not invent facts not present in the file. Prefer concise, professional, data-driven language."
+        )
 
         model = getattr(settings, 'OPENAI_MODEL', 'gpt-4o-mini')
         max_tokens = min(getattr(settings, 'OPENAI_MAX_TOKENS', 4096), 4096)
@@ -2231,19 +2295,15 @@ Use numbers from the JSON when available. Do not invent data that is not support
             response_format={"type": "json_object"},
         )
         
-        # Parse the response
         ai_content = response.choices[0].message.content
-        
-        # Try to parse as JSON
+
         try:
-            import json
             ai_response = json.loads(ai_content)
             sections = ai_response.get('sections', [])
             if not sections and isinstance(ai_response, list):
                 sections = ai_response
             if sections:
                 return {'success': True, 'sections': sections, 'ai_enhanced': True}
-            return {'success': False, 'error': 'AI returned an empty report. Please refine your prompt and try again.'}
         except json.JSONDecodeError:
             # If not JSON, create structured response from text
             sections = []
@@ -2275,10 +2335,33 @@ Use numbers from the JSON when available. Do not invent data that is not support
             
             if sections:
                 return {'success': True, 'sections': sections, 'ai_enhanced': True}
+            fallback_sections = build_dynamic_report_sections(
+                report_options.get('sections', []),
+                context.get('financial_data', {}),
+                report_options,
+            )
+            if fallback_sections:
+                return {'success': True, 'sections': fallback_sections, 'ai_enhanced': False}
             return {'success': False, 'error': 'AI response could not be parsed. Please try again.'}
-            
+
+        fallback_sections = build_dynamic_report_sections(
+            report_options.get('sections', []),
+            context.get('financial_data', {}),
+            report_options,
+        )
+        if fallback_sections:
+            return {'success': True, 'sections': fallback_sections, 'ai_enhanced': False}
+        return {'success': False, 'error': 'AI returned an empty report. Please refine your prompt and try again.'}
+
     except Exception as e:
         print(f"DEBUG: OpenAI API error: {e}")
+        fallback_sections = build_dynamic_report_sections(
+            (context.get('report_options') or {}).get('sections', []),
+            context.get('financial_data', {}),
+            context.get('report_options') or {},
+        )
+        if fallback_sections:
+            return {'success': True, 'sections': fallback_sections, 'ai_enhanced': False}
         return {'success': False, 'error': parse_openai_error(e)}
 
 
@@ -2286,7 +2369,43 @@ def generate_template_based_analysis(prompt, financial_data, bank_name, data_per
     """Generate template-based analysis when AI is not available"""
     prompt_lower = prompt.lower()
     sections = []
-    
+    registry = get_report_prompt_registry()
+    prompt_sections = []
+
+    keyword_section_map = [
+        ('summary', 'executive_summary'),
+        ('executive', 'executive_summary'),
+        ('overview', 'executive_summary'),
+        ('stat', 'statistical_highlights'),
+        ('metric', 'financial_ratios'),
+        ('ratio', 'financial_ratios'),
+        ('wacc', 'wacc_analysis'),
+        ('money market', 'money_market_analysis'),
+        ('liquidity', 'money_market_analysis'),
+        ('investment', 'investment_analysis'),
+        ('macro', 'macroeconomic_indicators'),
+        ('country', 'country_risk_analysis'),
+        ('market', 'market_trends'),
+        ('trend', 'market_trends'),
+        ('recommend', 'recommendations'),
+    ]
+
+    for keyword, section_key in keyword_section_map:
+        if keyword in prompt_lower and section_key not in prompt_sections:
+            prompt_sections.append(section_key)
+
+    if prompt_sections:
+        sections.extend(build_dynamic_report_sections(prompt_sections, {
+            'dashboard': financial_data if isinstance(financial_data, dict) else {},
+            'financial_data': financial_data if isinstance(financial_data, dict) else {},
+            'qc_dashboard': financial_data.get('qc_dashboard', {}) if isinstance(financial_data, dict) else {},
+            'income_risk': financial_data.get('income_risk', {}) if isinstance(financial_data, dict) else {},
+            'dupont': financial_data.get('dupont', {}) if isinstance(financial_data, dict) else {},
+            'bank_name': bank_name,
+            'data_period': data_period,
+        }, registry.build_report_options({'sections': prompt_sections})))
+        return sections
+
     # Generate sections based on prompt analysis
     if any(keyword in prompt_lower for keyword in ['risk', 'risk assessment', 'risk analysis', 'danger', 'threat']):
         sections.append(generate_risk_analysis(financial_data, bank_name))

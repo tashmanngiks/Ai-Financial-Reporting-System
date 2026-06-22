@@ -9,6 +9,7 @@ from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view, permission_classes
 
 from ..services.report_store import get_report, list_report_ids, list_reports, update_report
+from ..services.report_prompt_registry import get_report_prompt_registry
 from ..views import (
     BenchmarkComparisonView,
     CustomReportView,
@@ -19,7 +20,6 @@ from ..views import (
     TrendAnalysisView,
     get_insights,
     regenerate_insights,
-    REPORT_TEMPLATES,
     count_report_words,
     generate_analysis_from_prompt,
     generate_csv_report,
@@ -170,9 +170,41 @@ def simple_export_view(request, report_id, file_type=None):
 @permission_classes([])
 def get_report_templates(request):
     """Get available report templates."""
+    registry = get_report_prompt_registry()
     return JsonResponse({
         'success': True,
-        'templates': REPORT_TEMPLATES,
+        'templates': registry.get_templates(),
+        'section_library': registry.get_section_library(),
+    })
+
+
+@api_view(['GET'])
+@permission_classes([])
+def get_report_prompt_config(request):
+    """Return the editable prompt configuration."""
+    registry = get_report_prompt_registry()
+    return JsonResponse({
+        'success': True,
+        'config': registry.load(),
+    })
+
+
+@api_view(['POST'])
+@permission_classes([])
+def update_report_prompt_config(request):
+    """Persist report prompt configuration updates."""
+    registry = get_report_prompt_registry()
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON in request body'}, status=400)
+
+    if not isinstance(body, dict):
+        return JsonResponse({'error': 'Configuration payload must be a JSON object'}, status=400)
+
+    return JsonResponse({
+        'success': True,
+        'config': registry.save(body),
     })
 
 
@@ -185,22 +217,35 @@ def generate_comprehensive_report(request, report_id):
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON in request body'}, status=400)
 
-    template_type = body.get('template', 'standard')
-    format_type = body.get('format', 'json')
+    registry = get_report_prompt_registry()
+    report_options = registry.build_report_options({
+        'template': body.get('template', 'standard'),
+        'sections': body.get('sections') or body.get('selected_sections') or [],
+        'include_sections': body.get('include_sections') or [],
+        'exclude_sections': body.get('exclude_sections') or [],
+        'length': body.get('length'),
+        'detail_level': body.get('detail_level'),
+        'output_format': body.get('format', 'json'),
+    })
+    template_type = report_options.get('template', 'custom')
+    format_type = report_options.get('output_format', 'json')
     report = get_report(str(report_id))
 
     if not report:
         return JsonResponse({'error': 'Report not found'}, status=404)
 
-    template = REPORT_TEMPLATES.get(template_type, REPORT_TEMPLATES['executive_summary'])
+    templates = registry.get_templates()
+    template = templates.get(template_type, templates.get('custom', {}))
+    sections = report_options['sections'] or template.get('sections', [])
     generated_report = {
         'report_id': str(report_id),
         'template_used': template_type,
-        'sections': generate_report_sections(template['sections'], report),
+        'sections': generate_report_sections(sections, report),
         'metadata': {
             'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'template_version': '1.0',
             'word_count': count_report_words(report),
+            'report_options': report_options,
         },
     }
 
@@ -232,13 +277,14 @@ def preview_report(request, report_id):
     report = get_report(str(report_id))
     if not report:
         return JsonResponse({'error': 'Report not found'}, status=404)
+    registry = get_report_prompt_registry()
 
     preview_data = {
         'report_id': str(report_id),
         'bank_name': report.get('bank_name'),
         'data_period': report.get('data_period'),
-        'preview_sections': generate_report_sections(['key_metrics', 'profitability'], report),
-        'available_templates': REPORT_TEMPLATES,
+        'preview_sections': generate_report_sections(['executive_summary', 'statistical_highlights'], report),
+        'available_templates': registry.get_templates(),
     }
     return JsonResponse(preview_data)
 
@@ -250,6 +296,15 @@ def simple_custom_report_view(request, report_id=None):
     try:
         data = json.loads(request.body) if request.body else {}
         prompt = data.get('prompt', '')
+        report_options = data.get('report_options') or {
+            'template': data.get('template'),
+            'sections': data.get('sections') or data.get('selected_sections') or [],
+            'include_sections': data.get('include_sections') or [],
+            'exclude_sections': data.get('exclude_sections') or [],
+            'length': data.get('length'),
+            'detail_level': data.get('detail_level'),
+            'output_format': data.get('format'),
+        }
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON in request body'}, status=400)
 
@@ -271,6 +326,7 @@ def simple_custom_report_view(request, report_id=None):
         prompt,
         original_json,
         report.get('ai_analysis', {}),
+        report_options=report_options,
     )
 
     if sections and ai_enhanced:
@@ -312,8 +368,10 @@ __all__ = [
     'generate_comprehensive_report',
     'get_insights',
     'get_report_templates',
+    'get_report_prompt_config',
     'preview_report',
     'regenerate_insights',
+    'update_report_prompt_config',
     'simple_custom_report_view',
     'simple_export_view',
     'simple_report_detail_view',

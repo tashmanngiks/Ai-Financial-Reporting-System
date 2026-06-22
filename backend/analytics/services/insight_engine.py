@@ -16,6 +16,9 @@ from django.core.cache import cache
 from decimal import Decimal
 from datetime import datetime
 
+from .dynamic_report_builder import build_dynamic_report_sections, build_report_context, build_statistics_bundle
+from .report_prompt_registry import get_report_prompt_registry
+
 logger = logging.getLogger(__name__)
 
 
@@ -81,7 +84,7 @@ class FinancialInsightEngine:
         
         self._last_request_time = time.time()
     
-    def generate_all_insights(self, metrics: Dict, data: Dict) -> Dict[str, Dict]:
+    def generate_all_insights(self, metrics: Dict, data: Dict, report_options: Dict | None = None) -> Dict[str, Dict]:
         """
         Generate all types of financial insights with caching
         
@@ -93,34 +96,44 @@ class FinancialInsightEngine:
             Dictionary containing all insights by type
         """
         insights = {}
-        
+        registry = get_report_prompt_registry()
+        report_options = registry.build_report_options(report_options or {})
+        report_context = build_report_context(data)
+
         # Generate cache key based on data hash
         data_hash = hash(str(sorted(metrics.items())) + str(sorted(data.items())))
-        
-        # Generate each type of insight with caching
-        insight_types = [
+
+        default_insight_types = [
             ('executive_summary', self._build_executive_summary_prompt),
             ('trend_analysis', self._build_trend_analysis_prompt),
             ('risk_assessment', self._build_risk_assessment_prompt),
             ('benchmark_comparison', self._build_benchmark_comparison_prompt),
             ('strengths_weaknesses', self._build_strengths_weaknesses_prompt),
-            ('recommendations', self._build_recommendations_prompt)
+            ('recommendations', self._build_recommendations_prompt),
         ]
-        
-        for insight_type, prompt_builder in insight_types:
+        insight_builders = {name: builder for name, builder in default_insight_types}
+        requested_sections = report_options.get('sections') or [name for name, _ in default_insight_types]
+
+        for insight_type in requested_sections:
             # Check cache first
             cache_key = f'ai_insight_{insight_type}_{data_hash}'
             cached_insight = cache.get(cache_key)
-            
+
             if cached_insight and getattr(settings, 'AI_ENABLE_CACHING', True):
                 insights[insight_type] = cached_insight
                 logger.info(f"Using cached insight for {insight_type}")
             else:
-                # Generate new insight
-                prompt = prompt_builder(metrics, data)
-                insight = self._generate_insight(prompt, insight_type)
+                if insight_type == 'statistical_highlights':
+                    insight = self._generate_statistical_highlights_insight(data, report_options)
+                elif insight_type in insight_builders:
+                    prompt = insight_builders[insight_type](metrics, data)
+                    insight = self._generate_insight(prompt, insight_type)
+                else:
+                    prompt = registry.get_section_prompt(insight_type, report_context)
+                    prompt = f"{prompt}\n\nSelected sections: {', '.join(requested_sections)}"
+                    insight = self._generate_insight(prompt, insight_type)
                 insights[insight_type] = insight
-                
+
                 # Cache the insight
                 if getattr(settings, 'AI_ENABLE_CACHING', True):
                     cache_duration = getattr(settings, 'AI_CACHE_DURATION', 3600)
@@ -267,6 +280,22 @@ class FinancialInsightEngine:
             'confidence_score': 0.85,
             'generated_at': datetime.now().isoformat(),
             'data_source': 'real_financial_data'
+        }
+
+    def _generate_statistical_highlights_insight(self, data: Dict, report_options: Dict | None = None) -> Dict:
+        """Generate a statistics-driven insight payload."""
+        stats = build_statistics_bundle(data)
+        return {
+            'content': stats['summary'],
+            'key_points': [
+                f"Best performer: {stats['best_performing'][0]['metric']}" if stats['best_performing'] else 'Best performer unavailable',
+                f"Worst performer: {stats['worst_performing'][0]['metric']}" if stats['worst_performing'] else 'Worst performer unavailable',
+            ],
+            'section_type': 'statistical_highlights',
+            'confidence_score': 1.0,
+            'generated_at': datetime.now().isoformat(),
+            'data_source': 'computed_statistics',
+            'statistics': stats,
         }
     
     def _generate_content_from_prompt(self, prompt: str, section_type: str) -> str:
@@ -669,7 +698,7 @@ class FinancialInsightEngine:
         
         return key_points[:10]  # Limit to 10 key points
     
-    def generate_custom_report(self, prompt: str, data: Dict, report) -> Dict:
+    def generate_custom_report(self, prompt: str, data: Dict, report, report_options: Dict | None = None) -> Dict:
         """
         Generate custom report based on user prompt
         
@@ -681,6 +710,56 @@ class FinancialInsightEngine:
         Returns:
             Dictionary containing custom report content
         """
+        registry = get_report_prompt_registry()
+        report_options = registry.build_report_options(report_options or {})
+        prompt_lower = prompt.lower()
+
+        selected_sections = list(report_options.get('sections', []))
+        keyword_map = {
+            'summary': ['executive_summary'],
+            'executive': ['executive_summary'],
+            'overview': ['executive_summary'],
+            'risk': ['risk_assessment', 'country_risk_analysis'],
+            'country': ['country_risk_analysis'],
+            'investment': ['investment_analysis'],
+            'wacc': ['wacc_analysis'],
+            'ratio': ['financial_ratios'],
+            'metric': ['statistical_highlights', 'financial_ratios'],
+            'kpi': ['statistical_highlights', 'financial_ratios'],
+            'macro': ['macroeconomic_indicators'],
+            'market': ['market_trends'],
+            'trend': ['market_trends'],
+            'money market': ['money_market_analysis'],
+            'liquidity': ['money_market_analysis'],
+            'recommend': ['recommendations'],
+        }
+
+        for keyword, mapped_sections in keyword_map.items():
+            if keyword in prompt_lower:
+                for section in mapped_sections:
+                    if section not in selected_sections:
+                        selected_sections.append(section)
+
+        if not selected_sections:
+            selected_sections = report_options.get('sections') or [
+                'executive_summary',
+                'statistical_highlights',
+                'recommendations',
+            ]
+
+        dynamic_sections = build_dynamic_report_sections(selected_sections, data, report_options)
+
+        return {
+            'title': f'Custom Financial Analysis Report',
+            'prompt': prompt,
+            'generated_at': timezone.now().isoformat(),
+            'sections': dynamic_sections,
+            'selected_sections': selected_sections,
+            'template': report_options.get('template'),
+            'report_options': report_options,
+            'ai_enhanced': bool(selected_sections),
+        }
+
         # Create a comprehensive custom report based on user prompt
         custom_report = {
             'title': f'Custom Financial Analysis Report',

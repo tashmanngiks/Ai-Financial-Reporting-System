@@ -11,7 +11,9 @@ from typing import Dict, List, Optional
 from decimal import Decimal
 
 from .metrics_engine import FinancialMetricsEngine
+from .dynamic_report_builder import build_dynamic_report_sections, build_statistics_bundle
 from .insight_engine import FinancialInsightEngine
+from .report_prompt_registry import get_report_prompt_registry
 
 
 class FinancialReportGenerator:
@@ -21,7 +23,7 @@ class FinancialReportGenerator:
         self.metrics_engine = FinancialMetricsEngine
         self.insight_engine = FinancialInsightEngine()
     
-    def generate_complete_report(self, data: Dict, upload_info: Dict = None) -> Dict:
+    def generate_complete_report(self, data: Dict, upload_info: Dict = None, report_options: Dict = None) -> Dict:
         """
         Generate a complete financial analysis report
         
@@ -46,19 +48,22 @@ class FinancialReportGenerator:
         metrics['key_insights'] = metrics_engine.generate_key_insights(metrics)
         
         # Generate AI-powered insights
-        insights = self.insight_engine.generate_all_insights(metrics, data)
+        registry = get_report_prompt_registry()
+        report_options = registry.build_report_options(report_options or {})
+        insights = self.insight_engine.generate_all_insights(metrics, data, report_options=report_options)
         
         # Build complete report structure
         report = self._build_report_structure(
             data=data,
             metrics=metrics,
             insights=insights,
-            upload_info=upload_info
+            upload_info=upload_info,
+            report_options=report_options,
         )
         
         return report
     
-    def _build_report_structure(self, data: Dict, metrics: Dict, insights: Dict, upload_info: Dict = None) -> Dict:
+    def _build_report_structure(self, data: Dict, metrics: Dict, insights: Dict, upload_info: Dict = None, report_options: Dict = None) -> Dict:
         """Build the complete report structure"""
         
         # Extract basic information
@@ -67,6 +72,11 @@ class FinancialReportGenerator:
         report_date = datetime.now().strftime('%B %d, %Y')
         
         # Build report sections
+        registry = get_report_prompt_registry()
+        report_options = registry.build_report_options(report_options or {})
+        adaptive_sections = build_dynamic_report_sections(report_options.get('sections', []), data, report_options)
+        statistics_bundle = build_statistics_bundle(data)
+
         report = {
             'metadata': {
                 'title': f'Financial Analysis Report - {bank_name}',
@@ -74,8 +84,12 @@ class FinancialReportGenerator:
                 'period': period,
                 'report_date': report_date,
                 'generated_by': 'AI Financial Analytics System',
-                'upload_info': upload_info or {}
+                'upload_info': upload_info or {},
+                'report_options': report_options,
             },
+            'report_options': report_options,
+            'adaptive_sections': adaptive_sections,
+            'statistical_highlights': statistics_bundle,
             
             'executive_summary': self._build_executive_summary_section(metrics, insights),
             
@@ -95,7 +109,7 @@ class FinancialReportGenerator:
             
             'appendix': self._build_appendix_section(data, metrics)
         }
-        
+
         return report
     
     def _build_executive_summary_section(self, metrics: Dict, insights: Dict) -> Dict:
