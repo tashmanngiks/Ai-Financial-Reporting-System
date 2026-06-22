@@ -7,6 +7,7 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAdminUser
 
 from ..services.report_store import get_report, list_report_ids, list_reports, update_report
 from ..services.report_prompt_registry import get_report_prompt_registry
@@ -190,7 +191,7 @@ def get_report_prompt_config(request):
 
 
 @api_view(['POST'])
-@permission_classes([])
+@permission_classes([IsAdminUser])
 def update_report_prompt_config(request):
     """Persist report prompt configuration updates."""
     registry = get_report_prompt_registry()

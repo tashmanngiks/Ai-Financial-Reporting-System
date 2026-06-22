@@ -10,6 +10,18 @@ from typing import Any
 
 DEFAULT_REPORT_PROMPT_CONFIG: dict[str, Any] = {
     "version": "1.0",
+    "system_prompt_template": (
+        "You are a senior financial analyst. Build a professional report that adapts to the selected sections and available data.\n"
+        "Report template: {template_name}.\n"
+        "Report length: {length}.\n"
+        "Detail level: {detail_level}.\n"
+        "Output format: {output_format}.\n"
+        "Bank or entity: {bank_name}.\n"
+        "Period: {data_period}.\n"
+        "Available data areas: {available_data}.\n"
+        "Selected report sections:\n{selected_sections_block}\n"
+        "Return valid JSON with a sections array. Each section should include a title and a content object with content, key_points, recommendations, charts, tables, and statistical_highlights where relevant."
+    ),
     "default_length": "standard",
     "default_detail_level": "balanced",
     "section_library": {
@@ -271,6 +283,29 @@ class ReportPromptRegistry:
             ordered_sections.append(f"- {section.get('title', section_key)}: {section.get('description', '')}")
 
         available_data = report_context.get("available_data_sections", [])
+        # Use editable template from config when present so it can be persisted and refined
+        config = self.load()
+        template = config.get("system_prompt_template")
+        selected_sections_block = "\n".join(ordered_sections)
+        fmt = {
+            "template_name": options.get("template_name", options.get("template", "custom")),
+            "length": options.get("length", "standard"),
+            "detail_level": options.get("detail_level", "balanced"),
+            "output_format": options.get("output_format", "json"),
+            "bank_name": report_context.get("bank_name", "Financial Dataset"),
+            "data_period": report_context.get("data_period", "Unknown Period"),
+            "available_data": ", ".join(available_data) if available_data else "unknown",
+            "selected_sections_block": selected_sections_block,
+        }
+
+        if template and isinstance(template, str):
+            try:
+                return template.format(**fmt)
+            except Exception:
+                # Fall back to generated prompt if formatting fails
+                pass
+
+        # Fallback (legacy) prompt
         return (
             "You are a senior financial analyst. Build a professional report that adapts to the selected sections and available data.\n"
             f"Report template: {options['template_name']}.\n"
