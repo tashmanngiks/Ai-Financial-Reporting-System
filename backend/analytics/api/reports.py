@@ -7,7 +7,10 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from django.contrib.auth import get_user_model
+
+from ..models import UserSettings
 
 from ..services.report_store import get_report, list_report_ids, list_reports, update_report
 from ..services.report_prompt_registry import get_report_prompt_registry
@@ -207,6 +210,38 @@ def update_report_prompt_config(request):
         'success': True,
         'config': registry.save(body),
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_settings(request):
+    """Return persisted settings for the authenticated user."""
+    user = request.user
+    try:
+        us = UserSettings.objects.get(user=user)
+        return JsonResponse({'success': True, 'settings': us.settings})
+    except UserSettings.DoesNotExist:
+        return JsonResponse({'success': True, 'settings': {} })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_user_settings(request):
+    """Persist settings for the authenticated user."""
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON in request body'}, status=400)
+
+    if not isinstance(body, dict):
+        return JsonResponse({'error': 'Settings payload must be a JSON object'}, status=400)
+
+    user = request.user
+    us, _ = UserSettings.objects.get_or_create(user=user)
+    # accept nested structure; overwrite stored settings
+    us.settings = body
+    us.save()
+    return JsonResponse({'success': True, 'settings': us.settings})
 
 
 @api_view(['POST'])

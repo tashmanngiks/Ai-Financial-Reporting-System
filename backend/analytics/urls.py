@@ -16,6 +16,8 @@ from .api.reports import (
     generate_comprehensive_report,
     get_insights,
     get_report_prompt_config,
+    get_user_settings,
+    update_user_settings,
     get_report_templates,
     preview_report,
     regenerate_insights,
@@ -77,6 +79,9 @@ urlpatterns = [
     path('simple-reports/templates/', get_report_templates),
     path('simple-reports/prompt-config/', get_report_prompt_config),
     path('simple-reports/prompt-config/update/', update_report_prompt_config),
+    # User settings (per-user persisted preferences)
+    path('user-settings/', get_user_settings),
+    path('user-settings/update/', update_user_settings),
     # Preview report
     path('simple-reports/<uuid:report_id>/preview/', preview_report),
     path('analyze/direct/', analyze_direct_data, name='analyze_direct'),

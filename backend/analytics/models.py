@@ -180,3 +180,13 @@ class AnalysisTask(models.Model):
     
     class Meta:
         ordering = ['-created_at']
+
+
+class UserSettings(models.Model):
+    """Per-user persisted settings stored as JSON."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='user_settings')
+    settings = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Settings for {self.user.username}"
