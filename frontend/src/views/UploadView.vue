@@ -190,9 +190,16 @@
                     :value="section.key"
                     class="mt-1 h-4 w-4 rounded border-gray-300 text-[#08AAC7] focus:ring-[#08AAC7]"
                   />
-                  <span>
-                    <span class="block text-sm font-medium text-gray-900">{{ section.title }}</span>
-                    <span class="block text-xs text-gray-600">{{ section.description }}</span>
+                  <span class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-3 w-full">
+                      <div class="min-w-0">
+                        <span class="block text-sm font-medium text-gray-900 truncate">{{ section.title }}</span>
+                        <span class="block text-xs text-gray-600 break-words whitespace-normal">{{ section.description }}</span>
+                      </div>
+                      <button type="button" @click.prevent="openSectionEditor(section)" class="ml-3 text-xs text-[#0691A8] hover:text-[#057A8F] shrink-0">
+                        Edit
+                      </button>
+                    </div>
                   </span>
                 </label>
               </div>
@@ -246,6 +253,25 @@
                 <span>Processing...</span>
               </span>
             </button>
+          </div>
+        </div>
+
+        <!-- Section Editor Modal -->
+        <div v-if="editingSectionKey" class="fixed inset-0 z-40 flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-black/50" @click="closeSectionEditor"></div>
+          <div class="relative max-w-lg w-full bg-white rounded-lg shadow-lg p-6 z-50">
+            <h3 class="text-lg font-semibold mb-3">Edit section</h3>
+            <label class="block mb-2 text-sm">Title</label>
+            <input v-model="editTitle" class="w-full p-2 border rounded mb-3" />
+            <label class="block mb-2 text-sm">Description</label>
+            <textarea v-model="editDescription" rows="4" class="w-full p-2 border rounded mb-4"></textarea>
+            <div class="flex justify-end gap-3">
+              <button class="px-4 py-2 border rounded" @click="closeSectionEditor">Cancel</button>
+              <button class="px-4 py-2 bg-[#08AAC7] text-white rounded" @click="saveSectionEdits" :disabled="savingSection">
+                <span v-if="savingSection">Saving...</span>
+                <span v-else>Save</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -501,6 +527,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { api } from '@/services/api'
 import {
   FINANCIAL_DASHBOARD_REPORT_PROMPT,
   REPORT_PROMPT_TEMPLATES,
@@ -558,6 +585,52 @@ const sectionOptions = computed(() => {
     description: section?.description || '',
   }))
 })
+
+// Editing state for section titles/descriptions
+const editingSectionKey = ref<string | null>(null)
+const editTitle = ref('')
+const editDescription = ref('')
+const savingSection = ref(false)
+
+const openSectionEditor = (section: { key: string; title: string; description: string }) => {
+  editingSectionKey.value = section.key
+  editTitle.value = section.title || ''
+  editDescription.value = section.description || ''
+}
+
+const closeSectionEditor = () => {
+  editingSectionKey.value = null
+  editTitle.value = ''
+  editDescription.value = ''
+}
+
+const saveSectionEdits = async () => {
+  if (!editingSectionKey.value) return
+  savingSection.value = true
+  try {
+    // Get current config
+    const cfgResp = await api.getReportPromptConfig()
+    const cfg = cfgResp.data && cfgResp.data.config ? cfgResp.data.config : {}
+    cfg.section_library = cfg.section_library || {}
+    cfg.section_library[editingSectionKey.value] = cfg.section_library[editingSectionKey.value] || {}
+    cfg.section_library[editingSectionKey.value].title = editTitle.value
+    cfg.section_library[editingSectionKey.value].description = editDescription.value
+
+    // Persist
+    await api.updateReportPromptConfig(cfg)
+
+    // Refresh local promptConfig
+    const refreshed = await api.getReportPromptConfig()
+    promptConfig.value = refreshed.data?.config || promptConfig.value
+    closeSectionEditor()
+  } catch (err) {
+    // show error in UI
+    console.error('Failed to save section edits', err)
+    // Optionally set a top-level error state
+  } finally {
+    savingSection.value = false
+  }
+}
 
 const applyPromptTemplate = (template: { prompt: string; id: string; sections?: string[] }) => {
   analysisPrompt.value =
@@ -651,6 +724,11 @@ const loadPromptConfig = async () => {
   try {
     const config = await analyticsStore.fetchReportPromptConfig()
     promptConfig.value = config
+
+    // If backend provides a system prompt template, use it as the analysis prompt
+    if (promptConfig.value?.system_prompt_template) {
+      analysisPrompt.value = promptConfig.value.system_prompt_template
+    }
 
     const defaultTemplate = templateOptions.value.find((template) => template.id === 'three_page_standard')
       || templateOptions.value[0]

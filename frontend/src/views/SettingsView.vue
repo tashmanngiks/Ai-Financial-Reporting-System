@@ -506,6 +506,12 @@ const saveSettings = async () => {
     localStorage.setItem('analytics_settings', JSON.stringify(settings))
     localStorage.setItem('analytics_preferences', JSON.stringify(preferences))
     lastSaved.value = new Date().toLocaleString()
+    // Persist the last-saved timestamp so it survives navigation/reloads
+    try {
+      localStorage.setItem('analytics_last_saved', lastSaved.value)
+    } catch (e) {
+      // ignore storage errors
+    }
 
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000))
@@ -541,6 +547,7 @@ const resetSettings = () => {
 
     localStorage.removeItem('analytics_settings')
     localStorage.removeItem('analytics_preferences')
+    localStorage.removeItem('analytics_last_saved')
     lastSaved.value = ''
   }
 }
@@ -576,6 +583,7 @@ const loadSettings = () => {
   try {
     const savedSettings = localStorage.getItem('analytics_settings')
     const savedPreferences = localStorage.getItem('analytics_preferences')
+    const savedLast = localStorage.getItem('analytics_last_saved')
 
     if (savedSettings) {
       Object.assign(settings, JSON.parse(savedSettings))
@@ -583,6 +591,10 @@ const loadSettings = () => {
 
     if (savedPreferences) {
       Object.assign(preferences, JSON.parse(savedPreferences))
+    }
+
+    if (savedLast) {
+      lastSaved.value = savedLast
     }
   } catch (error) {
     console.error('Failed to load settings:', error)

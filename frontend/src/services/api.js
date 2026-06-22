@@ -113,6 +113,15 @@ export const api = {
     return apiClient.post('/simple-reports/prompt-config/update/', config)
   },
 
+  // Per-user settings
+  getUserSettings() {
+    return apiClient.get('/user-settings/')
+  },
+
+  updateUserSettings(settings) {
+    return apiClient.post('/user-settings/update/', settings)
+  },
+
   exportReport(id, format = 'pdf') {
     return downloadReportFile(id, format)
   },

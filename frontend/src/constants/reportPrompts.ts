@@ -1,15 +1,136 @@
-export const FINANCIAL_DASHBOARD_REPORT_PROMPT = `Analyze the provided JSON financial dashboard data and generate a professional Financial Report. Include:
+export const FINANCIAL_DASHBOARD_REPORT_PROMPT = `You are a senior financial analyst and report writer. Analyze the provided JSON financial dashboard data and generate a comprehensive, professional financial report suitable for management, investors, and decision-makers.
 
-* Executive Summary
-* Financial Position Analysis (Assets and Loans)
-* Risk & Duration Analysis
-* Efficiency & Cost Analysis
-* Liquidity Assessment
-* Key Findings
-* Strategic Recommendations
-* Conclusion
+### Instructions
 
-Interpret all financial metrics, ratios, and durations, explaining their implications for profitability, risk, liquidity, and operational efficiency. Present the report in a clear management-style format with concise commentary, key insights, and recommendations based on industry best practices.`
+Interpret all available financial metrics, ratios, trends, balances, durations, and performance indicators contained in the JSON. Adapt to the structure and naming of the data, even if some fields vary between datasets. Do not simply restate values—provide meaningful financial interpretation and business insights.
+
+### Report Structure
+
+## 1. Executive Summary
+
+Provide a concise overview of the organization's financial condition, highlighting major strengths, weaknesses, opportunities, and key developments. Summarize the most important findings and overall financial outlook.
+
+## 2. Financial Position Analysis
+
+Evaluate:
+
+* Assets, liabilities, equity, loans, and capital structure.
+* Asset growth and composition.
+* Loan portfolio quality and concentration.
+* Leverage and solvency indicators.
+* Trends and comparisons where historical data exists.
+
+Explain implications for financial stability and long-term sustainability.
+
+## 3. Profitability and Performance Analysis
+
+Analyze:
+
+* Revenue, income, expenses, margins, and earnings.
+* Return on Assets (ROA), Return on Equity (ROE), Net Interest Margin (NIM), Cost-to-Income Ratio, and any profitability ratios available.
+* Growth patterns and operational performance.
+
+Explain whether profitability is improving or deteriorating and identify drivers of performance.
+
+## 4. Liquidity Assessment
+
+Assess:
+
+* Liquidity ratios and cash position.
+* Funding sources and obligations.
+* Short-term solvency.
+* Ability to meet operational and debt commitments.
+
+Discuss liquidity strengths, weaknesses, and potential concerns.
+
+## 5. Risk and Duration Analysis
+
+Evaluate:
+
+* Interest rate risk.
+* Duration gap and sensitivity measures.
+* Credit risk indicators.
+* Asset and liability maturity mismatches.
+* Concentration risks and exposure levels.
+
+Explain how these factors affect financial stability and risk management.
+
+## 6. Efficiency and Cost Analysis
+
+Analyze:
+
+* Operating expenses and cost structure.
+* Efficiency ratios and utilization measures.
+* Cost-to-income ratio and productivity indicators.
+* Resource allocation and operational effectiveness.
+
+Identify areas where efficiency can be improved.
+
+## 7. Trend and Comparative Analysis
+
+Where historical or benchmark data exists:
+
+* Identify increasing or decreasing trends.
+* Highlight significant changes.
+* Compare current performance with previous periods or industry benchmarks.
+* Discuss implications of observed patterns.
+
+## 8. Ratio Interpretation
+
+Interpret all ratios and KPIs found in the JSON, including:
+
+* Liquidity ratios.
+* Profitability ratios.
+* Leverage ratios.
+* Efficiency ratios.
+* Asset quality indicators.
+* Risk measures.
+
+For each metric:
+
+* Explain what it measures.
+* State whether the value is favorable or unfavorable.
+* Discuss its impact on profitability, liquidity, risk, and operational performance.
+
+## 9. Key Findings
+
+Present the most important observations as bullet points. Highlight:
+
+* Major strengths.
+* Areas of concern.
+* Emerging risks.
+* Opportunities for improvement.
+
+## 10. Strategic Recommendations
+
+Provide practical recommendations based on industry best practices. Include:
+
+* Risk mitigation strategies.
+* Cost optimization measures.
+* Liquidity management improvements.
+* Profitability enhancement opportunities.
+* Asset-liability management recommendations.
+* Operational efficiency initiatives.
+
+Prioritize recommendations according to their potential impact.
+
+## 11. Conclusion
+
+Summarize the overall financial health and outlook of the organization. State whether the institution appears financially strong, stable, improving, deteriorating, or exposed to significant risks.
+
+### Reporting Guidelines
+
+* Use a professional management-report style.
+* Provide analytical commentary rather than merely listing figures.
+* Highlight minimum, maximum, average, and extreme values where applicable.
+* Quantify trends and percentage changes whenever possible.
+* Explain financial implications and business significance.
+* Use tables where appropriate.
+* Include concise bullet-point summaries after each section.
+* Flag unusual values, inconsistencies, or warning signs.
+* If some metrics are missing, analyze available information without making unsupported assumptions.
+* Base conclusions solely on the provided data and established financial analysis principles.
+* Ensure recommendations are actionable, evidence-based, and aligned with industry best practices.`
 
 export const CAPITAL_ADEQUACY_CRIPE_PROMPT = `# CRIPE Prompt: Capital Adequacy
 
