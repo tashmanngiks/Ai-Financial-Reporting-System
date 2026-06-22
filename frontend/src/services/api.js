@@ -45,12 +45,15 @@ apiClient.interceptors.response.use(
 // API service
 export const api = {
   // File upload and analysis
-  uploadFile(file, prompt, description = '') {
+  uploadFile(file, prompt, description = '', reportOptions = {}) {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('prompt', prompt)
     if (description) {
       formData.append('description', description)
+    }
+    if (reportOptions && Object.keys(reportOptions).length) {
+      formData.append('report_options', JSON.stringify(reportOptions))
     }
 
     return apiClient.post('/simple-upload/', formData, {
@@ -94,8 +97,20 @@ export const api = {
     return apiClient.get(`/reports/${id}/insights/`)
   },
 
-  regenerateInsights(id) {
-    return apiClient.post(`/reports/${id}/insights/regenerate/`, {}, { timeout: 180000 })
+  regenerateInsights(id, reportOptions = {}) {
+    return apiClient.post(
+      `/reports/${id}/insights/regenerate/`,
+      { report_options: reportOptions },
+      { timeout: 180000 },
+    )
+  },
+
+  getReportPromptConfig() {
+    return apiClient.get('/simple-reports/prompt-config/')
+  },
+
+  updateReportPromptConfig(config) {
+    return apiClient.post('/simple-reports/prompt-config/update/', config)
   },
 
   exportReport(id, format = 'pdf') {

@@ -69,6 +69,40 @@
         </div>
       </div>
 
+      <div v-if="reportOptionsSummary" class="card">
+        <div class="card-header">
+          <h2 class="text-lg font-medium text-gray-900">Report settings</h2>
+        </div>
+        <div class="card-body space-y-3 text-sm text-gray-700">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="rounded-lg bg-gray-50 p-3">
+              <div class="text-xs uppercase tracking-wide text-gray-500">Template</div>
+              <div class="font-medium text-gray-900">{{ reportOptionsSummary.template }}</div>
+            </div>
+            <div class="rounded-lg bg-gray-50 p-3">
+              <div class="text-xs uppercase tracking-wide text-gray-500">Length</div>
+              <div class="font-medium text-gray-900">{{ reportOptionsSummary.length }}</div>
+            </div>
+            <div class="rounded-lg bg-gray-50 p-3">
+              <div class="text-xs uppercase tracking-wide text-gray-500">Format</div>
+              <div class="font-medium text-gray-900">{{ reportOptionsSummary.output_format }}</div>
+            </div>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wide text-gray-500 mb-2">Selected sections</div>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-for="section in reportOptionsSummary.sections"
+                :key="section"
+                class="inline-flex items-center rounded-full bg-[#08AAC7]/10 px-3 py-1 text-xs font-medium text-[#056F80]"
+              >
+                {{ sectionLabel(section) }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Legacy template report (pre-AI) -->
       <div v-if="hasLegacyTemplateOnly" class="card border-amber-200 bg-amber-50">
         <div class="card-body text-sm text-amber-900">
@@ -178,6 +212,17 @@ const userPrompt = computed(
   () => report.value?.user_prompt || report.value?.metadata?.user_prompt || ''
 )
 
+const reportOptionsSummary = computed(() => {
+  const options = report.value?.metadata?.report_options || report.value?.report_options || null
+  if (!options) return null
+  return {
+    template: options.template || 'custom',
+    length: options.length || 'standard',
+    output_format: options.output_format || 'pdf',
+    sections: Array.isArray(options.sections) ? options.sections : [],
+  }
+})
+
 const reportTitle = computed(() => {
   const r = report.value
   if (!r) return 'Analysis Report'
@@ -233,6 +278,13 @@ function formatRecommendation(rec: unknown) {
     return r.area ? `${r.area}: ${r.action}` : String(r.action)
   }
   return String(rec)
+}
+
+function sectionLabel(sectionKey: string) {
+  return sectionKey
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 const regenerateReport = async () => {

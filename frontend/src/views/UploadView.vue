@@ -101,20 +101,118 @@
             </div>
           </div>
 
+          <!-- Report Settings -->
+          <div class="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-sm font-semibold text-gray-900">Report Settings</h3>
+                <p class="text-xs text-gray-600">Choose the template, sections, and output preferences.</p>
+              </div>
+              <button
+                type="button"
+                @click="resetReportSettings"
+                class="text-xs font-medium text-[#0691A8] hover:text-[#057A8F]"
+              >
+                Reset
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label class="block">
+                <span class="text-xs font-semibold text-gray-700">Template</span>
+                <select
+                  v-model="selectedTemplate"
+                  class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#08AAC7] bg-white text-sm"
+                >
+                  <option v-for="template in templateOptions" :key="template.id" :value="template.id">
+                    {{ template.label }}
+                  </option>
+                </select>
+              </label>
+
+              <label class="block">
+                <span class="text-xs font-semibold text-gray-700">Output Format</span>
+                <select
+                  v-model="outputFormat"
+                  class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#08AAC7] bg-white text-sm"
+                >
+                  <option value="pdf">PDF</option>
+                  <option value="word">Word</option>
+                  <option value="excel">Excel</option>
+                  <option value="json">JSON</option>
+                </select>
+              </label>
+
+              <label class="block">
+                <span class="text-xs font-semibold text-gray-700">Report Length</span>
+                <select
+                  v-model="reportLength"
+                  class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#08AAC7] bg-white text-sm"
+                >
+                  <option value="short">One page</option>
+                  <option value="standard">Three pages</option>
+                  <option value="long">Comprehensive</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </label>
+
+              <label class="block">
+                <span class="text-xs font-semibold text-gray-700">Detail Level</span>
+                <select
+                  v-model="detailLevel"
+                  class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#08AAC7] bg-white text-sm"
+                >
+                  <option value="brief">Brief</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="detailed">Detailed</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="mt-4">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-gray-700">Included Sections</span>
+                <div class="flex gap-2 text-xs">
+                  <button type="button" class="text-[#0691A8] hover:text-[#057A8F]" @click="selectAllSections">Select all</button>
+                  <button type="button" class="text-gray-500 hover:text-gray-700" @click="clearSections">Clear</button>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
+                <label
+                  v-for="section in sectionOptions"
+                  :key="section.key"
+                  class="flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer"
+                  :class="selectedSections.includes(section.key) ? 'border-[#08AAC7] bg-[#08AAC7]/5' : 'border-gray-200 bg-white hover:border-[#08AAC7]/40'"
+                >
+                  <input
+                    v-model="selectedSections"
+                    type="checkbox"
+                    :value="section.key"
+                    class="mt-1 h-4 w-4 rounded border-gray-300 text-[#08AAC7] focus:ring-[#08AAC7]"
+                  />
+                  <span>
+                    <span class="block text-sm font-medium text-gray-900">{{ section.title }}</span>
+                    <span class="block text-xs text-gray-600">{{ section.description }}</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+
           <!-- Analysis Prompt (required) -->
           <div class="mt-6">
             <label for="analysis-prompt" class="block text-sm font-semibold text-gray-900 mb-2">
               Analysis prompt <span class="text-red-500">*</span>
             </label>
             <p class="text-sm text-gray-600 mb-3">
-              Use the management report template below or edit it for your needs. The AI will follow this structure.
+              Start from a template, then add or remove details in the prompt or section list before generating the report.
             </p>
             <div class="flex flex-wrap gap-2 mb-3">
               <button
                 v-for="template in reportPromptTemplates"
                 :key="template.id"
                 type="button"
-                @click="applyPromptTemplate(template.prompt)"
+                @click="applyPromptTemplate(template)"
                 class="px-3 py-1.5 text-xs font-medium rounded-lg border border-[#08AAC7]/30 text-[#0691A8] bg-[#08AAC7]/5 hover:bg-[#08AAC7]/10 transition-colors"
               >
                 {{ template.label }}
@@ -124,11 +222,10 @@
               id="analysis-prompt"
               v-model="analysisPrompt"
               rows="14"
-              maxlength="4000"
               class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#08AAC7] focus:border-transparent text-sm"
               placeholder="Describe the report structure and focus areas for the AI analysis."
             />
-            <p class="text-xs text-gray-500 mt-2 text-right">{{ analysisPrompt.length }}/4000</p>
+            <p class="text-xs text-gray-500 mt-2 text-right">{{ analysisPrompt.length }} characters</p>
           </div>
 
           <!-- Upload Button -->
@@ -401,7 +498,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
 import {
@@ -424,9 +521,69 @@ const analysisPrompt = ref(FINANCIAL_DASHBOARD_REPORT_PROMPT)
 const reportPromptTemplates = REPORT_PROMPT_TEMPLATES
 const dragOver = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const promptConfig = ref<Record<string, any> | null>(null)
+const selectedTemplate = ref('three_page_standard')
+const reportLength = ref('standard')
+const detailLevel = ref('balanced')
+const outputFormat = ref('pdf')
+const selectedSections = ref<string[]>([
+  'executive_summary',
+  'statistical_highlights',
+  'financial_ratios',
+  'risk_assessment',
+  'recommendations',
+])
 
-const applyPromptTemplate = (prompt: string) => {
-  analysisPrompt.value = prompt
+const templateOptions = computed(() => {
+  const templates = promptConfig.value?.templates || {}
+  return Object.entries(templates).map(([id, template]: [string, any]) => ({
+    id,
+    label: template?.name || id.replace(/_/g, ' '),
+    sections: Array.isArray(template?.sections) ? template.sections : [],
+  }))
+})
+
+const applyTemplateSections = (templateId: string) => {
+  const template = templateOptions.value.find((item) => item.id === templateId)
+  if (template?.sections?.length) {
+    selectedSections.value = [...template.sections]
+  }
+}
+
+const sectionOptions = computed(() => {
+  const sections = promptConfig.value?.section_library || {}
+  return Object.entries(sections).map(([key, section]: [string, any]) => ({
+    key,
+    title: section?.title || key.replace(/_/g, ' '),
+    description: section?.description || '',
+  }))
+})
+
+const applyPromptTemplate = (template: { prompt: string; id: string; sections?: string[] }) => {
+  analysisPrompt.value =
+    template.prompt || FINANCIAL_DASHBOARD_REPORT_PROMPT
+  if (templateOptions.value.some((item) => item.id === template.id)) {
+    selectedTemplate.value = template.id
+  }
+  if (template.sections?.length) {
+    selectedSections.value = [...template.sections]
+  }
+}
+
+const selectAllSections = () => {
+  selectedSections.value = sectionOptions.value.map((section) => section.key)
+}
+
+const clearSections = () => {
+  selectedSections.value = []
+}
+
+const resetReportSettings = () => {
+  selectedTemplate.value = 'three_page_standard'
+  reportLength.value = 'standard'
+  detailLevel.value = 'balanced'
+  outputFormat.value = 'pdf'
+  applyTemplateSections('three_page_standard')
 }
 
 // Methods
@@ -453,7 +610,24 @@ const handleUpload = async () => {
   if (!selectedFile.value || !analysisPrompt.value.trim()) return
 
   try {
-    const data = await analyticsStore.uploadFile(selectedFile.value, analysisPrompt.value)
+    const reportOptions = {
+      template: selectedTemplate.value,
+      sections: selectedSections.value,
+      include_sections: selectedSections.value,
+      exclude_sections: sectionOptions.value
+        .map((section) => section.key)
+        .filter((sectionKey) => !selectedSections.value.includes(sectionKey)),
+      length: reportLength.value,
+      detail_level: detailLevel.value,
+      output_format: outputFormat.value,
+    }
+
+    const data = await analyticsStore.uploadFile(
+      selectedFile.value,
+      analysisPrompt.value,
+      '',
+      reportOptions,
+    )
     const id = data?.id || data?.report_id || analyticsStore.currentReport
     if (id && analyticsStore.uploadStatus === 'completed') {
       router.push(`/reports/${id}`)
@@ -472,4 +646,30 @@ const formatFileSize = (bytes: number) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
+
+const loadPromptConfig = async () => {
+  try {
+    const config = await analyticsStore.fetchReportPromptConfig()
+    promptConfig.value = config
+
+    const defaultTemplate = templateOptions.value.find((template) => template.id === 'three_page_standard')
+      || templateOptions.value[0]
+    if (defaultTemplate) {
+      selectedTemplate.value = defaultTemplate.id
+      if (defaultTemplate.sections?.length) {
+        selectedSections.value = [...defaultTemplate.sections]
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load prompt config:', error)
+  }
+}
+
+onMounted(() => {
+  loadPromptConfig()
+})
+
+watch(selectedTemplate, (templateId) => {
+  applyTemplateSections(templateId)
+})
 </script>

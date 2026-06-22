@@ -17,6 +17,7 @@ export const useAnalyticsStore = defineStore('analytics', {
     reports: [],
     currentReport: null,
     reportDetail: null,
+    reportPromptConfig: null,
 
     // Loading states
     loading: {
@@ -56,7 +57,7 @@ export const useAnalyticsStore = defineStore('analytics', {
 
   actions: {
     // Upload actions
-    async uploadFile(file, prompt, description = '') {
+    async uploadFile(file, prompt, description = '', reportOptions = {}) {
       if (!prompt?.trim()) {
         throw new Error('Analysis prompt is required')
       }
@@ -67,7 +68,7 @@ export const useAnalyticsStore = defineStore('analytics', {
       this.taskProgress = 10
 
       try {
-        const response = await api.uploadFile(file, prompt.trim(), description)
+        const response = await api.uploadFile(file, prompt.trim(), description, reportOptions)
         const data = response.data
 
         this.currentUpload = data
@@ -253,7 +254,11 @@ export const useAnalyticsStore = defineStore('analytics', {
       this.loading.insights = true
       this.errors.report = null
       try {
-        const response = await api.regenerateInsights(reportId)
+        const reportOptions =
+          this.reportDetail?.metadata?.report_options ||
+          this.reportDetail?.report_options ||
+          {}
+        const response = await api.regenerateInsights(reportId, reportOptions)
         const data = response.data
         if (data.comprehensive_analysis && String(this.reportDetail?.id) === String(reportId)) {
           this.reportDetail = {
@@ -291,6 +296,28 @@ export const useAnalyticsStore = defineStore('analytics', {
         throw handleApiError(error)
       } finally {
         this.loading.upload = false
+      }
+    },
+
+    async fetchReportPromptConfig() {
+      try {
+        const response = await api.getReportPromptConfig()
+        this.reportPromptConfig = response.data?.config || null
+        return this.reportPromptConfig
+      } catch (error) {
+        console.error('Failed to fetch prompt config:', error)
+        throw handleApiError(error)
+      }
+    },
+
+    async updateReportPromptConfig(config) {
+      try {
+        const response = await api.updateReportPromptConfig(config)
+        this.reportPromptConfig = response.data?.config || null
+        return this.reportPromptConfig
+      } catch (error) {
+        console.error('Failed to update prompt config:', error)
+        throw handleApiError(error)
       }
     },
 
