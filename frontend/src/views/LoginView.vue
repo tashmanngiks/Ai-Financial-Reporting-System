@@ -19,6 +19,7 @@
                 v-model="loginForm.username"
                 type="text"
                 required
+                autocomplete="username"
                 class="form-input"
                 placeholder="Enter your username or email"
               />
@@ -32,6 +33,7 @@
                 v-model="loginForm.password"
                 type="password"
                 required
+                autocomplete="current-password"
                 class="form-input"
                 placeholder="Enter your password"
               />
@@ -85,13 +87,6 @@
             </div>
           </form>
         </div>
-      </div>
-
-      <!-- Demo Account Info -->
-      <div class="text-center">
-        <p class="text-sm text-gray-600">
-          Demo account: <span class="font-medium">admin / admin123</span>
-        </p>
       </div>
     </div>
   </div>

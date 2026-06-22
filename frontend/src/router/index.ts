@@ -40,6 +40,11 @@ const router = createRouter({
       component: () => import('../views/SettingsView.vue'),
     },
     {
+      path: '/prompt-editor',
+      name: 'PromptEditor',
+      component: () => import('../views/PromptEditorView.vue'),
+    },
+    {
       path: '/login',
       name: 'Login',
       component: () => import('../views/LoginView.vue'),
