@@ -6,8 +6,10 @@ import uuid
 from typing import Any
 
 from django.contrib.auth.models import AnonymousUser
+from django.db.models import Q
+from django.utils import timezone
 
-from ..models import PersistedReport
+from ..models import DataRetentionAuditLog, PersistedReport
 
 try:
     from django.core.cache import cache
@@ -49,8 +51,6 @@ def list_report_ids() -> list[str]:
 
 
 def list_reports(request=None) -> list[dict[str, Any]]:
-    from django.db.models import Q
-
     user, _ = _resolve_owner(request)
     if user is not None:
         queryset = PersistedReport.objects.filter(Q(owner=user) | Q(owner__isnull=True))
@@ -100,3 +100,71 @@ def update_report(report_id: str, updates: dict[str, Any], request=None) -> dict
 
     report.update(updates)
     return save_report(str(report_id), report, request=request)
+
+
+def list_report_records(
+    request=None,
+    *,
+    include_archived: bool = True,
+    search: str = '',
+    status: str = '',
+) -> list[PersistedReport]:
+    user, _ = _resolve_owner(request)
+    if user is not None:
+        queryset = PersistedReport.objects.filter(Q(owner=user) | Q(owner__isnull=True))
+    else:
+        queryset = PersistedReport.objects.all()
+
+    if not include_archived:
+        queryset = queryset.filter(is_archived=False)
+
+    if search:
+        search_lower = search.lower()
+        queryset = [
+            record for record in queryset
+            if search_lower in str(record.report_data.get('filename', '')).lower()
+            or search_lower in str(record.report_data.get('bank_name', '')).lower()
+            or search_lower in str(record.report_data.get('metadata', {}).get('title', '')).lower()
+        ]
+        if status:
+            queryset = [record for record in queryset if str(record.report_data.get('status', '')).lower() == status.lower()]
+        return list(queryset)
+
+    records = list(queryset.order_by('-created_at'))
+    if status:
+        records = [record for record in records if str(record.report_data.get('status', '')).lower() == status.lower()]
+    return records
+
+
+def archive_reports(report_ids: list[str], request=None) -> dict[str, Any]:
+    ids = [uuid.UUID(str(report_id)) for report_id in report_ids]
+    queryset = PersistedReport.objects.filter(id__in=ids)
+    updated = queryset.update(is_archived=True, archived_at=timezone.now())
+    _log_retention_action(request, 'archive', report_ids)
+    return {'updated_count': updated}
+
+
+def restore_reports(report_ids: list[str], request=None) -> dict[str, Any]:
+    ids = [uuid.UUID(str(report_id)) for report_id in report_ids]
+    queryset = PersistedReport.objects.filter(id__in=ids)
+    updated = queryset.update(is_archived=False, archived_at=None)
+    _log_retention_action(request, 'restore', report_ids)
+    return {'updated_count': updated}
+
+
+def delete_reports(report_ids: list[str], request=None) -> dict[str, Any]:
+    ids = [uuid.UUID(str(report_id)) for report_id in report_ids]
+    queryset = PersistedReport.objects.filter(id__in=ids)
+    deleted_count, _ = queryset.delete()
+    _log_retention_action(request, 'delete', report_ids)
+    return {'deleted_count': deleted_count}
+
+
+def _log_retention_action(request, action: str, report_ids: list[str], metadata: dict[str, Any] | None = None) -> None:
+    user, _ = _resolve_owner(request)
+    DataRetentionAuditLog.objects.create(
+        user=user,
+        action=action,
+        report_ids=[str(report_id) for report_id in report_ids],
+        metadata=metadata or {},
+    )

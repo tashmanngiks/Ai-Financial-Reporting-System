@@ -38,6 +38,8 @@ def simple_login_view(request):
                 'email': getattr(user, 'email', ''),
                 'first_name': getattr(user, 'first_name', ''),
                 'last_name': getattr(user, 'last_name', ''),
+                'is_staff': user.is_staff,
+                'is_superuser': user.is_superuser,
             },
         })
     except Exception as exc:

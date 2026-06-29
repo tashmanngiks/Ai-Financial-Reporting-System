@@ -265,6 +265,14 @@ class ReportPromptRegistry:
         if self._config is not None:
             return self._config
 
+        try:
+            from .prompt_settings_store import build_prompt_config_payload
+
+            self._config = build_prompt_config_payload()
+            return self._config
+        except Exception:
+            pass
+
         config = deepcopy(DEFAULT_REPORT_PROMPT_CONFIG)
         if self.config_path.exists():
             try:
@@ -278,13 +286,19 @@ class ReportPromptRegistry:
         return config
 
     def save(self, config: dict[str, Any]) -> dict[str, Any]:
-        merged = self._merge(deepcopy(DEFAULT_REPORT_PROMPT_CONFIG), config)
-        self.config_path.write_text(
-            json.dumps(merged, indent=2, ensure_ascii=True),
-            encoding="utf-8",
-        )
-        self._config = merged
-        return merged
+        try:
+            from .prompt_settings_store import save_report_configuration
+
+            self._config = save_report_configuration(config)
+            return self._config
+        except Exception:
+            merged = self._merge(deepcopy(DEFAULT_REPORT_PROMPT_CONFIG), config)
+            self.config_path.write_text(
+                json.dumps(merged, indent=2, ensure_ascii=True),
+                encoding="utf-8",
+            )
+            self._config = merged
+            return merged
 
     def get_section_library(self) -> dict[str, Any]:
         return deepcopy(self.load().get("section_library", {}))
@@ -535,3 +549,9 @@ def get_report_prompt_registry() -> ReportPromptRegistry:
     if _REGISTRY is None:
         _REGISTRY = ReportPromptRegistry()
     return _REGISTRY
+
+
+def clear_report_prompt_registry_cache() -> None:
+    global _REGISTRY
+    if _REGISTRY is not None:
+        _REGISTRY._config = None

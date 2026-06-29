@@ -6,14 +6,36 @@ from datetime import datetime
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from django.contrib.auth import get_user_model
 
+from .authentication import CsrfExemptSessionAuthentication
+
 from ..models import UserSettings
 
-from ..services.report_store import get_report, list_report_ids, list_reports, update_report
-from ..services.report_prompt_registry import get_report_prompt_registry
+from ..services.report_store import (
+    archive_reports,
+    delete_reports,
+    get_report,
+    list_report_ids,
+    list_report_records,
+    list_reports,
+    restore_reports,
+    update_report,
+)
+from ..services.report_prompt_registry import clear_report_prompt_registry_cache, get_report_prompt_registry
+from ..services.prompt_settings_store import (
+    build_prompt_config_payload,
+    get_analysis_prompt,
+    list_analysis_prompts,
+    reset_all_analysis_prompts,
+    reset_analysis_prompt,
+    save_report_configuration,
+    serialize_analysis_prompt,
+    update_analysis_prompt_content,
+    ensure_prompt_defaults,
+)
 from ..views import (
     BenchmarkComparisonView,
     CustomReportView,
@@ -183,21 +205,27 @@ def get_report_templates(request):
 
 
 @api_view(['GET'])
-@permission_classes([])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated])
 def get_report_prompt_config(request):
     """Return the editable prompt configuration."""
-    registry = get_report_prompt_registry()
+    ensure_prompt_defaults()
+    config = build_prompt_config_payload()
+    prompts = [serialize_analysis_prompt(prompt) for prompt in list_analysis_prompts()]
     return JsonResponse({
         'success': True,
-        'config': registry.load(),
+        'config': config,
+        'prompts': prompts,
+        'is_admin': bool(request.user.is_staff or request.user.is_superuser),
     })
 
 
+@csrf_exempt
 @api_view(['POST'])
+@authentication_classes([CsrfExemptSessionAuthentication])
 @permission_classes([IsAdminUser])
 def update_report_prompt_config(request):
     """Persist report prompt configuration updates."""
-    registry = get_report_prompt_registry()
     try:
         body = json.loads(request.body) if request.body else {}
     except json.JSONDecodeError:
@@ -206,9 +234,83 @@ def update_report_prompt_config(request):
     if not isinstance(body, dict):
         return JsonResponse({'error': 'Configuration payload must be a JSON object'}, status=400)
 
+    config = save_report_configuration(body, user=request.user)
+    clear_report_prompt_registry_cache()
+    prompts = [serialize_analysis_prompt(prompt) for prompt in list_analysis_prompts()]
     return JsonResponse({
         'success': True,
-        'config': registry.save(body),
+        'config': config,
+        'prompts': prompts,
+    })
+
+
+@api_view(['GET'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated])
+def get_analysis_prompts(request):
+    """Return persisted AI analysis prompts for the Upload page."""
+    ensure_prompt_defaults()
+    return JsonResponse({
+        'success': True,
+        'is_admin': bool(request.user.is_staff or request.user.is_superuser),
+        'prompts': [serialize_analysis_prompt(prompt) for prompt in list_analysis_prompts()],
+    })
+
+
+@csrf_exempt
+@api_view(['POST'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAdminUser])
+def update_analysis_prompt_view(request):
+    """Update a single analysis prompt in the database."""
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON in request body'}, status=400)
+
+    prompt_id = body.get('prompt_id')
+    content = body.get('content', '')
+    if not prompt_id:
+        return JsonResponse({'error': 'prompt_id is required'}, status=400)
+    if not str(content).strip():
+        return JsonResponse({'error': 'Prompt content cannot be empty'}, status=400)
+
+    try:
+        prompt = update_analysis_prompt_content(prompt_id, str(content), user=request.user)
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=404)
+
+    clear_report_prompt_registry_cache()
+    return JsonResponse({
+        'success': True,
+        'prompt': serialize_analysis_prompt(prompt),
+    })
+
+
+@csrf_exempt
+@api_view(['POST'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAdminUser])
+def reset_analysis_prompts_view(request):
+    """Reset one or all analysis prompts to their built-in defaults."""
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON in request body'}, status=400)
+
+    prompt_id = body.get('prompt_id', 'all')
+    try:
+        if prompt_id == 'all':
+            prompts = reset_all_analysis_prompts(user=request.user)
+        else:
+            prompts = [reset_analysis_prompt(prompt_id, user=request.user)]
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=404)
+
+    clear_report_prompt_registry_cache()
+    return JsonResponse({
+        'success': True,
+        'prompts': [serialize_analysis_prompt(prompt) for prompt in prompts],
     })
 
 
@@ -225,7 +327,7 @@ def get_user_settings(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def update_user_settings(request):
     """Persist settings for the authenticated user."""
     try:
@@ -236,6 +338,20 @@ def update_user_settings(request):
     if not isinstance(body, dict):
         return JsonResponse({'error': 'Settings payload must be a JSON object'}, status=400)
 
+    retention_days = body.get('retentionDays')
+    retention_unit = body.get('retentionUnit')
+    if retention_days is not None:
+        try:
+            retention_days = int(retention_days)
+        except (TypeError, ValueError):
+            return JsonResponse({'error': 'retentionDays must be an integer'}, status=400)
+        if retention_days < 1:
+            return JsonResponse({'error': 'retentionDays must be greater than 0'}, status=400)
+        body['retentionDays'] = retention_days
+
+    if retention_unit is not None and retention_unit not in {'days', 'weeks', 'months'}:
+        return JsonResponse({'error': 'retentionUnit must be days, weeks, or months'}, status=400)
+
     user = request.user
     us, _ = UserSettings.objects.get_or_create(user=user)
     # accept nested structure; overwrite stored settings
@@ -244,8 +360,132 @@ def update_user_settings(request):
     return JsonResponse({'success': True, 'settings': us.settings})
 
 
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def list_manageable_reports(request):
+    """List reports for management table with filters."""
+    search = request.query_params.get('search', '').strip()
+    status = request.query_params.get('status', '').strip()
+    include_archived = request.query_params.get('include_archived', 'true').lower() == 'true'
+    records = list_report_records(
+        request=request,
+        include_archived=include_archived,
+        search=search,
+        status=status,
+    )
+    items = []
+    for record in records:
+        report = record.report_data or {}
+        items.append({
+            'id': str(record.id),
+            'filename': report.get('filename'),
+            'bank_name': report.get('bank_name'),
+            'status': report.get('status', 'completed'),
+            'ai_enhanced': report.get('ai_enhanced', False),
+            'data_period': report.get('data_period'),
+            'created_at': record.created_at.isoformat(),
+            'updated_at': record.updated_at.isoformat(),
+            'is_archived': record.is_archived,
+            'archived_at': record.archived_at.isoformat() if record.archived_at else None,
+            'title': report.get('metadata', {}).get('title') or report.get('filename') or str(record.id),
+            'report_type': report.get('report_type') or report.get('metadata', {}).get('template_name') or 'analysis',
+        })
+    return JsonResponse({'success': True, 'results': items, 'count': len(items)})
+
+
+@csrf_exempt
 @api_view(['POST'])
-@permission_classes([])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAdminUser])
+def bulk_report_action(request):
+    """Archive, restore, or delete reports in bulk."""
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON in request body'}, status=400)
+
+    action = str(body.get('action', '')).strip().lower()
+    ids = body.get('report_ids') or []
+    if action not in {'archive', 'restore', 'delete'}:
+        return JsonResponse({'error': 'action must be one of: archive, restore, delete'}, status=400)
+    if not isinstance(ids, list) or not ids:
+        return JsonResponse({'error': 'report_ids must be a non-empty list'}, status=400)
+
+    try:
+        if action == 'archive':
+            result = archive_reports(ids, request=request)
+        elif action == 'restore':
+            result = restore_reports(ids, request=request)
+        else:
+            result = delete_reports(ids, request=request)
+    except ValueError:
+        return JsonResponse({'error': 'Invalid report id in report_ids'}, status=400)
+
+    return JsonResponse({'success': True, 'action': action, 'result': result})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def trigger_data_cleanup(request):
+    """
+    Trigger cleanup of old reports and uploads for the authenticated user.
+    
+    Query Parameters:
+        - dry_run: bool (default: True). If true, preview without deleting.
+    
+    Returns:
+        Cleanup results including number of items deleted.
+    """
+    try:
+        from analytics.services.cleanup_service import cleanup_all_old_data
+        
+        dry_run = request.query_params.get('dry_run', 'true').lower() == 'true'
+        
+        result = cleanup_all_old_data(user=request.user, dry_run=dry_run)
+        
+        return JsonResponse({
+            'success': True,
+            'dry_run': dry_run,
+            'result': result,
+            'message': f"Cleanup completed: {result['total_deleted']} items processed"
+        })
+    
+    except Exception as e:
+        return JsonResponse(
+            {'error': str(e), 'success': False},
+            status=400
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def preview_cleanup(request):
+    """
+    Preview what would be deleted based on user's retention settings.
+    
+    Returns:
+        Dry-run cleanup results showing what would be deleted.
+    """
+    try:
+        from analytics.services.cleanup_service import cleanup_all_old_data
+        
+        result = cleanup_all_old_data(user=request.user, dry_run=True)
+        
+        return JsonResponse({
+            'success': True,
+            'preview': True,
+            'result': result,
+            'message': f"{result['total_deleted']} items would be deleted"
+        })
+    
+    except Exception as e:
+        return JsonResponse(
+            {'error': str(e), 'success': False},
+            status=400
+        )
+
+
+@api_view(['POST'])
 def generate_comprehensive_report(request, report_id):
     """Generate comprehensive financial report."""
     try:
@@ -405,6 +645,9 @@ __all__ = [
     'get_insights',
     'get_report_templates',
     'get_report_prompt_config',
+    'get_analysis_prompts',
+    'update_analysis_prompt_view',
+    'reset_analysis_prompts_view',
     'preview_report',
     'regenerate_insights',
     'update_report_prompt_config',
@@ -412,4 +655,8 @@ __all__ = [
     'simple_export_view',
     'simple_report_detail_view',
     'simple_reports_view',
+    'trigger_data_cleanup',
+    'preview_cleanup',
+    'list_manageable_reports',
+    'bulk_report_action',
 ]

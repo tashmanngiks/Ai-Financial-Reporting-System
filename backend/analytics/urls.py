@@ -16,6 +16,9 @@ from .api.reports import (
     generate_comprehensive_report,
     get_insights,
     get_report_prompt_config,
+    get_analysis_prompts,
+    update_analysis_prompt_view,
+    reset_analysis_prompts_view,
     get_user_settings,
     update_user_settings,
     get_report_templates,
@@ -26,6 +29,10 @@ from .api.reports import (
     simple_export_view,
     simple_report_detail_view,
     simple_reports_view,
+    trigger_data_cleanup,
+    preview_cleanup,
+    list_manageable_reports,
+    bulk_report_action,
 )
 from .api.system import (
     SystemHealthView,
@@ -79,6 +86,9 @@ urlpatterns = [
     path('simple-reports/templates/', get_report_templates),
     path('simple-reports/prompt-config/', get_report_prompt_config),
     path('simple-reports/prompt-config/update/', update_report_prompt_config),
+    path('analysis-prompts/', get_analysis_prompts),
+    path('analysis-prompts/update/', update_analysis_prompt_view),
+    path('analysis-prompts/reset/', reset_analysis_prompts_view),
     # User settings (per-user persisted preferences)
     path('user-settings/', get_user_settings),
     path('user-settings/update/', update_user_settings),
@@ -107,6 +117,12 @@ urlpatterns = [
     
     # User endpoints
     path('uploads/', UserUploadsView.as_view(), name='user_uploads'),
+    
+    # Data cleanup endpoints
+    path('cleanup/', trigger_data_cleanup, name='trigger_cleanup'),
+    path('cleanup/preview/', preview_cleanup, name='preview_cleanup'),
+    path('reports/manage/', list_manageable_reports, name='reports_manage'),
+    path('reports/manage/bulk-action/', bulk_report_action, name='reports_manage_bulk_action'),
     
     # System endpoints
     path('health/', SystemHealthView.as_view(), name='system_health'),

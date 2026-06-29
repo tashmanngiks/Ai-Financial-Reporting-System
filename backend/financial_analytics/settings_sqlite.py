@@ -42,6 +42,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'financial_analytics.middleware.Utf8JsonContentTypeMiddleware',
+    'financial_analytics.middleware.SecurityHeaderCleanupMiddleware',
 ]
 
 ROOT_URLCONF = 'financial_analytics.urls'
@@ -150,3 +152,7 @@ OPENAI_MAX_TOKENS = int(os.environ.get('OPENAI_MAX_TOKENS', '800'))
 OPENAI_TEMPERATURE = float(os.environ.get('OPENAI_TEMPERATURE', '0.7'))
 AI_CACHE_DURATION = int(os.environ.get('AI_CACHE_DURATION', '3600'))
 AI_ENABLE_CACHING = os.environ.get('AI_ENABLE_CACHING', 'True').lower() == 'true'
+
+# Reduce legacy headers that trigger scanner warnings.
+SECURE_BROWSER_XSS_FILTER = False
+X_FRAME_OPTIONS = 'DENY'

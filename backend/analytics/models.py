@@ -147,6 +147,8 @@ class PersistedReport(models.Model):
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='persisted_reports')
     owner_username = models.CharField(max_length=150, blank=True, default='')
     report_data = models.JSONField(default=dict)
+    is_archived = models.BooleanField(default=False)
+    archived_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -156,6 +158,31 @@ class PersistedReport(models.Model):
     def __str__(self):
         title = self.report_data.get('metadata', {}).get('title', self.report_data.get('filename', str(self.id)))
         return f"Report: {title}"
+
+
+class DataRetentionAuditLog(models.Model):
+    """Audit log for report retention and management actions."""
+
+    ACTION_CHOICES = [
+        ('cleanup', 'Cleanup'),
+        ('delete', 'Delete'),
+        ('archive', 'Archive'),
+        ('restore', 'Restore'),
+        ('settings_update', 'Settings Update'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='retention_audit_logs')
+    action = models.CharField(max_length=32, choices=ACTION_CHOICES)
+    report_ids = models.JSONField(default=list, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        actor = self.user.username if self.user else 'system'
+        return f'{self.action} by {actor} at {self.created_at}'
 
 
 class AnalysisTask(models.Model):
@@ -190,3 +217,42 @@ class UserSettings(models.Model):
 
     def __str__(self):
         return f"Settings for {self.user.username}"
+
+
+class AnalysisPrompt(models.Model):
+    """Persisted AI analysis prompt editable from the Upload page."""
+    prompt_id = models.CharField(max_length=64, unique=True)
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    default_content = models.TextField()
+    recommended_sections = models.JSONField(default=list, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='updated_analysis_prompts',
+    )
+
+    class Meta:
+        ordering = ['prompt_id']
+
+    def __str__(self):
+        return self.title
+
+
+class ReportConfiguration(models.Model):
+    """Singleton report template and section configuration."""
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    section_library = models.JSONField(default=dict, blank=True)
+    templates = models.JSONField(default=dict, blank=True)
+    default_length = models.CharField(max_length=20, default='standard')
+    default_detail_level = models.CharField(max_length=20, default='balanced')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = 'Report configurations'
+
+    def __str__(self):
+        return 'Report configuration'
