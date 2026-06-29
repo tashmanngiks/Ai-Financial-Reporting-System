@@ -15,12 +15,13 @@
         <!-- User menu -->
         <div class="flex items-center space-x-4">
           <!-- System health indicator -->
-          <div class="flex items-center">
+          <div class="flex items-center" role="status" aria-label="System health">
             <div
               :class="[
                 'w-2 h-2 rounded-full mr-2',
                 systemHealth.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'
               ]"
+              aria-hidden="true"
             ></div>
             <span class="text-sm text-gray-600">System</span>
           </div>
@@ -28,10 +29,14 @@
           <!-- User dropdown -->
           <div class="relative" ref="userMenuRef">
             <button
+              type="button"
               @click="showUserMenu = !showUserMenu"
               class="flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              :aria-expanded="showUserMenu"
+              aria-haspopup="menu"
+              aria-label="Open user account menu"
             >
-              <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center">
+              <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center" aria-hidden="true">
                 <span class="text-white font-medium">
                   {{ userInitials }}
                 </span>
@@ -42,6 +47,7 @@
             <div
               v-if="showUserMenu"
               class="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50"
+              role="menu"
             >
               <div class="py-1">
                 <div class="px-4 py-2 text-sm text-gray-700 border-b">
@@ -49,6 +55,8 @@
                   <div class="text-gray-500">{{ authStore.user?.email }}</div>
                 </div>
                 <button
+                  type="button"
+                  role="menuitem"
                   @click="handleLogout"
                   class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                 >

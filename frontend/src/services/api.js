@@ -113,6 +113,23 @@ export const api = {
     return apiClient.post('/simple-reports/prompt-config/update/', config)
   },
 
+  getAnalysisPrompts() {
+    return apiClient.get('/analysis-prompts/')
+  },
+
+  updateAnalysisPrompt(promptId, content) {
+    return apiClient.post('/analysis-prompts/update/', {
+      prompt_id: promptId,
+      content,
+    })
+  },
+
+  resetAnalysisPrompt(promptId = 'all') {
+    return apiClient.post('/analysis-prompts/reset/', {
+      prompt_id: promptId,
+    })
+  },
+
   // Per-user settings
   getUserSettings() {
     return apiClient.get('/user-settings/')
@@ -120,6 +137,25 @@ export const api = {
 
   updateUserSettings(settings) {
     return apiClient.post('/user-settings/update/', settings)
+  },
+
+  previewCleanup() {
+    return apiClient.get('/cleanup/preview/')
+  },
+
+  runCleanup(dryRun = true) {
+    return apiClient.post(`/cleanup/?dry_run=${dryRun ? 'true' : 'false'}`)
+  },
+
+  getManageableReports(params = {}) {
+    return apiClient.get('/reports/manage/', { params })
+  },
+
+  bulkReportAction(action, reportIds) {
+    return apiClient.post('/reports/manage/bulk-action/', {
+      action,
+      report_ids: reportIds,
+    })
   },
 
   exportReport(id, format = 'pdf') {

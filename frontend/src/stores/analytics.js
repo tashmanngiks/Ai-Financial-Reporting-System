@@ -38,6 +38,7 @@ export const useAnalyticsStore = defineStore('analytics', {
     // Insights state
     insights: [],
     insightsLoading: false,
+    manageableReports: [],
   }),
 
   getters: {
@@ -303,9 +304,39 @@ export const useAnalyticsStore = defineStore('analytics', {
       try {
         const response = await api.getReportPromptConfig()
         this.reportPromptConfig = response.data?.config || null
-        return this.reportPromptConfig
+        return response.data
       } catch (error) {
         console.error('Failed to fetch prompt config:', error)
+        throw handleApiError(error)
+      }
+    },
+
+    async fetchAnalysisPrompts() {
+      try {
+        const response = await api.getAnalysisPrompts()
+        return response.data
+      } catch (error) {
+        console.error('Failed to fetch analysis prompts:', error)
+        throw handleApiError(error)
+      }
+    },
+
+    async updateAnalysisPrompt(promptId, content) {
+      try {
+        const response = await api.updateAnalysisPrompt(promptId, content)
+        return response.data
+      } catch (error) {
+        console.error('Failed to update analysis prompt:', error)
+        throw handleApiError(error)
+      }
+    },
+
+    async resetAnalysisPrompt(promptId = 'all') {
+      try {
+        const response = await api.resetAnalysisPrompt(promptId)
+        return response.data
+      } catch (error) {
+        console.error('Failed to reset analysis prompt:', error)
         throw handleApiError(error)
       }
     },
@@ -317,6 +348,61 @@ export const useAnalyticsStore = defineStore('analytics', {
         return this.reportPromptConfig
       } catch (error) {
         console.error('Failed to update prompt config:', error)
+        throw handleApiError(error)
+      }
+    },
+
+    async fetchUserSettings() {
+      try {
+        const response = await api.getUserSettings()
+        return response.data?.settings || {}
+      } catch (error) {
+        throw handleApiError(error)
+      }
+    },
+
+    async saveUserSettings(settings) {
+      try {
+        const response = await api.updateUserSettings(settings)
+        return response.data?.settings || {}
+      } catch (error) {
+        throw handleApiError(error)
+      }
+    },
+
+    async previewCleanup() {
+      try {
+        const response = await api.previewCleanup()
+        return response.data
+      } catch (error) {
+        throw handleApiError(error)
+      }
+    },
+
+    async runCleanup(dryRun = false) {
+      try {
+        const response = await api.runCleanup(dryRun)
+        return response.data
+      } catch (error) {
+        throw handleApiError(error)
+      }
+    },
+
+    async fetchManageableReports(params = {}) {
+      try {
+        const response = await api.getManageableReports(params)
+        this.manageableReports = response.data?.results || []
+        return response.data
+      } catch (error) {
+        throw handleApiError(error)
+      }
+    },
+
+    async bulkReportAction(action, reportIds) {
+      try {
+        const response = await api.bulkReportAction(action, reportIds)
+        return response.data
+      } catch (error) {
         throw handleApiError(error)
       }
     },

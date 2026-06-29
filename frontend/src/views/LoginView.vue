@@ -40,6 +40,7 @@
               </div>
               <input
                 id="username"
+                name="username"
                 v-model="loginForm.username"
                 type="text"
                 required
@@ -63,6 +64,7 @@
               </div>
               <input
                 id="password"
+                name="password"
                 v-model="loginForm.password"
                 :type="showPassword ? 'text' : 'password'"
                 required
@@ -74,6 +76,8 @@
                 type="button"
                 @click="showPassword = !showPassword"
                 class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-300 transition"
+                :title="showPassword ? 'Hide password' : 'Show password'"
+                :aria-label="showPassword ? 'Hide password' : 'Show password'"
               >
                 <svg v-if="!showPassword" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -90,6 +94,8 @@
           <div class="flex items-center justify-between">
             <label class="flex items-center">
               <input
+                id="remember-me"
+                name="remember_me"
                 v-model="loginForm.rememberMe"
                 type="checkbox"
                 class="w-4 h-4 bg-slate-700 border border-slate-600 text-blue-500 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"

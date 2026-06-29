@@ -31,13 +31,7 @@ onMounted(() => {
 </template>
 
 <style>
-/* Hide default scrollbar and use custom one */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 #f1f5f9;
-}
-
-/* For Webkit browsers */
+/* WebKit scrollbar styling (Safari, Chrome, Edge) */
 *::-webkit-scrollbar {
   width: 6px;
 }
@@ -55,6 +49,14 @@ onMounted(() => {
   background-color: #94a3b8;
 }
 
+/* Firefox scrollbar styling */
+@supports (scrollbar-width: thin) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
+  }
+}
+
 /* Hide main body scrollbar */
 body {
   overflow: hidden;
@@ -63,6 +65,13 @@ body {
 /* Ensure smooth scrolling */
 html {
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+@supports (text-size-adjust: 100%) {
+  html {
+    text-size-adjust: 100%;
+  }
 }
 
 /* Login page specific styles */

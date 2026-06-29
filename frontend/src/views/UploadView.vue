@@ -68,6 +68,7 @@
               <input
                 id="file-upload"
                 ref="fileInput"
+                name="financial_data_file"
                 type="file"
                 accept=".json"
                 class="hidden"
@@ -91,10 +92,13 @@
                 </div>
               </div>
               <button
+                type="button"
                 @click="selectedFile = null"
                 class="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-300"
+                aria-label="Remove selected file"
+                title="Remove selected file"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                 </svg>
               </button>
@@ -118,9 +122,11 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label class="block">
+              <label class="block" for="report-template">
                 <span class="text-xs font-semibold text-gray-700">Template</span>
                 <select
+                  id="report-template"
+                  name="template"
                   v-model="selectedTemplate"
                   class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#08AAC7] bg-white text-sm"
                 >
@@ -130,9 +136,11 @@
                 </select>
               </label>
 
-              <label class="block">
+              <label class="block" for="report-output-format">
                 <span class="text-xs font-semibold text-gray-700">Output Format</span>
                 <select
+                  id="report-output-format"
+                  name="output_format"
                   v-model="outputFormat"
                   class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#08AAC7] bg-white text-sm"
                 >
@@ -143,9 +151,11 @@
                 </select>
               </label>
 
-              <label class="block">
+              <label class="block" for="report-length">
                 <span class="text-xs font-semibold text-gray-700">Report Length</span>
                 <select
+                  id="report-length"
+                  name="report_length"
                   v-model="reportLength"
                   class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#08AAC7] bg-white text-sm"
                 >
@@ -156,9 +166,11 @@
                 </select>
               </label>
 
-              <label class="block">
+              <label class="block" for="report-detail-level">
                 <span class="text-xs font-semibold text-gray-700">Detail Level</span>
                 <select
+                  id="report-detail-level"
+                  name="detail_level"
                   v-model="detailLevel"
                   class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#08AAC7] bg-white text-sm"
                 >
@@ -178,68 +190,139 @@
                 </div>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
-                <label
+                <div
                   v-for="section in sectionOptions"
                   :key="section.key"
-                  class="flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer"
+                  class="flex items-start gap-3 p-3 rounded-lg border transition-colors"
                   :class="selectedSections.includes(section.key) ? 'border-[#08AAC7] bg-[#08AAC7]/5' : 'border-gray-200 bg-white hover:border-[#08AAC7]/40'"
                 >
                   <input
+                    :id="`section-${section.key}`"
                     v-model="selectedSections"
                     type="checkbox"
+                    name="sections"
                     :value="section.key"
                     class="mt-1 h-4 w-4 rounded border-gray-300 text-[#08AAC7] focus:ring-[#08AAC7]"
                   />
-                  <span class="flex-1 min-w-0">
-                    <div class="flex items-center justify-between gap-3 w-full">
-                      <div class="min-w-0">
-                        <span class="block text-sm font-medium text-gray-900 truncate">{{ section.title }}</span>
-                        <span class="block text-xs text-gray-600 break-words whitespace-normal">{{ section.description }}</span>
-                      </div>
-                      <button type="button" @click.prevent="openSectionEditor(section)" class="ml-3 text-xs text-[#0691A8] hover:text-[#057A8F] shrink-0">
-                        Edit
-                      </button>
-                    </div>
-                  </span>
-                </label>
+                  <div class="flex-1 min-w-0">
+                    <label :for="`section-${section.key}`" class="block cursor-pointer">
+                      <span class="block text-sm font-medium text-gray-900 truncate">{{ section.title }}</span>
+                      <span class="block text-xs text-gray-600 break-words whitespace-normal">{{ section.description }}</span>
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    :aria-label="`Edit ${section.title} section`"
+                    @click="openSectionEditor(section)"
+                    class="ml-3 text-xs text-[#0691A8] hover:text-[#057A8F] shrink-0"
+                  >
+                    Edit
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Analysis Prompt (required) -->
-          <div class="mt-6">
-            <label for="analysis-prompt" class="block text-sm font-semibold text-gray-900 mb-2">
-              Analysis prompt <span class="text-red-500">*</span>
-            </label>
-            <p class="text-sm text-gray-600 mb-3">
-              Start from a template, then add or remove details in the prompt or section list before generating the report.
-            </p>
-            <div class="flex flex-wrap gap-2 mb-3">
-              <button
-                v-for="template in reportPromptTemplates"
-                :key="template.id"
-                type="button"
-                @click="applyPromptTemplate(template)"
-                class="px-3 py-1.5 text-xs font-medium rounded-lg border border-[#08AAC7]/30 text-[#0691A8] bg-[#08AAC7]/5 hover:bg-[#08AAC7]/10 transition-colors"
+          <!-- AI Analysis Prompts -->
+          <div class="mt-6 p-4 bg-white rounded-xl border border-gray-200">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
+              <div>
+                <h3 class="text-sm font-semibold text-gray-900">AI Analysis Prompts</h3>
+                <p class="text-xs text-gray-600 mt-1">
+                  Choose a prompt for this upload. Administrators can edit and save improvements permanently.
+                </p>
+              </div>
+              <span
+                v-if="promptStatusMessage"
+                class="text-xs font-medium px-3 py-1 rounded-full"
+                :class="promptStatusIsError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'"
               >
-                {{ template.label }}
-              </button>
+                {{ promptStatusMessage }}
+              </span>
             </div>
-            <textarea
-              id="analysis-prompt"
-              v-model="analysisPrompt"
-              rows="14"
-              class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#08AAC7] focus:border-transparent text-sm"
-              placeholder="Describe the report structure and focus areas for the AI analysis."
-            />
-            <p class="text-xs text-gray-500 mt-2 text-right">{{ analysisPrompt.length }} characters</p>
+
+            <div v-if="loadingPrompts" class="py-8 text-center text-sm text-gray-500">
+              <div class="loading-spinner w-6 h-6 mx-auto mb-2"></div>
+              Loading saved prompts...
+            </div>
+
+            <template v-else>
+              <div class="flex flex-wrap gap-2 mb-4">
+                <button
+                  v-for="prompt in promptList"
+                  :key="prompt.id"
+                  type="button"
+                  @click="selectPrompt(prompt.id)"
+                  class="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors"
+                  :class="activePromptId === prompt.id
+                    ? 'border-[#08AAC7] bg-[#08AAC7]/10 text-[#0691A8]'
+                    : 'border-gray-200 text-gray-700 hover:border-[#08AAC7]/40'"
+                >
+                  {{ prompt.title }}
+                </button>
+              </div>
+
+              <div v-for="prompt in promptList" :key="`editor-${prompt.id}`" v-show="activePromptId === prompt.id">
+                <label :for="`analysis-prompt-${prompt.id}`" class="block text-sm font-semibold text-gray-900 mb-2">
+                  {{ prompt.title }}
+                  <span v-if="activePromptId === prompt.id" class="text-red-500">*</span>
+                </label>
+                <p v-if="prompt.updated_at" class="text-xs text-gray-500 mb-2">
+                  Last saved: {{ formatPromptDate(prompt.updated_at) }}
+                  <span v-if="prompt.updated_by">by {{ prompt.updated_by }}</span>
+                </p>
+                <textarea
+                  :id="`analysis-prompt-${prompt.id}`"
+                  v-model="promptDrafts[prompt.id]"
+                  :readonly="!isAdmin"
+                  rows="14"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#08AAC7] focus:border-transparent text-sm font-mono"
+                  :class="{ 'bg-gray-50 cursor-not-allowed': !isAdmin }"
+                  placeholder="Describe the report structure and focus areas for the AI analysis."
+                />
+                <p class="text-xs text-gray-500 mt-2 text-right">
+                  {{ (promptDrafts[prompt.id] || '').length }} characters
+                </p>
+
+                <div v-if="isAdmin" class="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    @click="savePrompt(prompt.id)"
+                    :disabled="savingPrompt || !(promptDrafts[prompt.id] || '').trim()"
+                    class="px-4 py-2 text-sm font-medium rounded-lg bg-[#08AAC7] text-white hover:bg-[#0691A8] disabled:opacity-50"
+                  >
+                    <span v-if="savingPrompt">Saving...</span>
+                    <span v-else>Save Changes</span>
+                  </button>
+                  <button
+                    type="button"
+                    @click="cancelPromptEdits(prompt.id)"
+                    :disabled="savingPrompt"
+                    class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel Changes
+                  </button>
+                  <button
+                    type="button"
+                    @click="resetPrompt(prompt.id)"
+                    :disabled="savingPrompt"
+                    class="px-4 py-2 text-sm font-medium rounded-lg border border-amber-300 text-amber-800 hover:bg-amber-50"
+                  >
+                    Reset to Default
+                  </button>
+                </div>
+                <p v-else class="mt-2 text-xs text-gray-500">
+                  Only administrators can edit and save prompts. You can still use the latest saved version for report generation.
+                </p>
+              </div>
+            </template>
           </div>
 
           <!-- Upload Button -->
           <div class="mt-6">
             <button
               @click="handleUpload"
-              :disabled="!selectedFile || !analysisPrompt.trim() || analyticsStore.loading.upload"
+              :disabled="!selectedFile || !analysisPrompt.trim() || analyticsStore.loading.upload || loadingPrompts"
               class="w-full px-6 py-4 bg-gradient-to-r from-[#08AAC7] to-[#0691A8] text-white rounded-xl hover:from-[#0691A8] hover:to-[#057A8F] transition-all duration-300 font-medium shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
               <span v-if="!analyticsStore.loading.upload" class="flex items-center justify-center">
@@ -257,17 +340,34 @@
         </div>
 
         <!-- Section Editor Modal -->
-        <div v-if="editingSectionKey" class="fixed inset-0 z-40 flex items-center justify-center p-4">
-          <div class="absolute inset-0 bg-black/50" @click="closeSectionEditor"></div>
+        <div
+          v-if="editingSectionKey"
+          class="fixed inset-0 z-40 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="section-editor-title"
+        >
+          <div class="absolute inset-0 bg-black/50" role="presentation" @click="closeSectionEditor"></div>
           <div class="relative max-w-lg w-full bg-white rounded-lg shadow-lg p-6 z-50">
-            <h3 class="text-lg font-semibold mb-3">Edit section</h3>
-            <label class="block mb-2 text-sm">Title</label>
-            <input v-model="editTitle" class="w-full p-2 border rounded mb-3" />
-            <label class="block mb-2 text-sm">Description</label>
-            <textarea v-model="editDescription" rows="4" class="w-full p-2 border rounded mb-4"></textarea>
+            <h3 id="section-editor-title" class="text-lg font-semibold mb-3">Edit section</h3>
+            <label for="section-edit-title" class="block mb-2 text-sm font-medium text-gray-700">Title</label>
+            <input
+              id="section-edit-title"
+              name="section_title"
+              v-model="editTitle"
+              class="w-full p-2 border rounded mb-3"
+            />
+            <label for="section-edit-description" class="block mb-2 text-sm font-medium text-gray-700">Description</label>
+            <textarea
+              id="section-edit-description"
+              name="section_description"
+              v-model="editDescription"
+              rows="4"
+              class="w-full p-2 border rounded mb-4"
+            />
             <div class="flex justify-end gap-3">
-              <button class="px-4 py-2 border rounded" @click="closeSectionEditor">Cancel</button>
-              <button class="px-4 py-2 bg-[#08AAC7] text-white rounded" @click="saveSectionEdits" :disabled="savingSection">
+              <button type="button" class="px-4 py-2 border rounded" @click="closeSectionEditor">Cancel</button>
+              <button type="button" class="px-4 py-2 bg-[#08AAC7] text-white rounded" @click="saveSectionEdits" :disabled="savingSection">
                 <span v-if="savingSection">Saving...</span>
                 <span v-else>Save</span>
               </button>
@@ -505,7 +605,7 @@
           </div>
           <div class="mt-4 flex space-x-3">
             <button
-              @click="analyticsStore.clearCurrentUpload(); analysisPrompt = ''"
+              @click="analyticsStore.clearCurrentUpload(); promptDrafts[activePromptId] = savedPrompts[activePromptId] || ''"
               class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-300 font-medium"
             >
               Try Again
@@ -527,25 +627,34 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { useAuthStore } from '@/stores/auth'
 import { api } from '@/services/api'
-import {
-  FINANCIAL_DASHBOARD_REPORT_PROMPT,
-  REPORT_PROMPT_TEMPLATES,
-} from '@/constants/reportPrompts'
-import {
-  DocumentArrowUpIcon,
-  XMarkIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-} from '@heroicons/vue/24/outline'
+import { FINANCIAL_DASHBOARD_REPORT_PROMPT } from '@/constants/reportPrompts'
+
+type AnalysisPromptRecord = {
+  id: string
+  title: string
+  content: string
+  default_content?: string
+  recommended_sections?: string[]
+  updated_at?: string | null
+  updated_by?: string | null
+}
 
 const router = useRouter()
 const analyticsStore = useAnalyticsStore()
+const authStore = useAuthStore()
 
 // Reactive state
 const selectedFile = ref<File | null>(null)
-const analysisPrompt = ref(FINANCIAL_DASHBOARD_REPORT_PROMPT)
-const reportPromptTemplates = REPORT_PROMPT_TEMPLATES
+const promptList = ref<AnalysisPromptRecord[]>([])
+const activePromptId = ref('financial_dashboard')
+const promptDrafts = ref<Record<string, string>>({})
+const savedPrompts = ref<Record<string, string>>({})
+const loadingPrompts = ref(true)
+const savingPrompt = ref(false)
+const promptStatusMessage = ref('')
+const promptStatusIsError = ref(false)
 const dragOver = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const promptConfig = ref<Record<string, any> | null>(null)
@@ -632,14 +741,118 @@ const saveSectionEdits = async () => {
   }
 }
 
-const applyPromptTemplate = (template: { prompt: string; id: string; sections?: string[] }) => {
-  analysisPrompt.value =
-    template.prompt || FINANCIAL_DASHBOARD_REPORT_PROMPT
-  if (templateOptions.value.some((item) => item.id === template.id)) {
-    selectedTemplate.value = template.id
+const canEditPrompts = ref(false)
+
+const isAdmin = computed(() => canEditPrompts.value || authStore.isAdmin)
+
+const analysisPrompt = computed(() => promptDrafts.value[activePromptId.value] || '')
+
+const setPromptStatus = (message: string, isError = false) => {
+  promptStatusMessage.value = message
+  promptStatusIsError.value = isError
+  if (!isError) {
+    window.setTimeout(() => {
+      if (promptStatusMessage.value === message) {
+        promptStatusMessage.value = ''
+      }
+    }, 4000)
   }
-  if (template.sections?.length) {
-    selectedSections.value = [...template.sections]
+}
+
+const formatPromptDate = (value?: string | null) => {
+  if (!value) return ''
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+}
+
+const applyPromptSections = (promptId: string) => {
+  const prompt = promptList.value.find((item) => item.id === promptId)
+  if (prompt?.recommended_sections?.length) {
+    selectedSections.value = [...prompt.recommended_sections]
+  }
+}
+
+const selectPrompt = (promptId: string) => {
+  activePromptId.value = promptId
+  applyPromptSections(promptId)
+}
+
+const hydratePromptState = (prompts: AnalysisPromptRecord[]) => {
+  promptList.value = prompts
+  const drafts: Record<string, string> = {}
+  const saved: Record<string, string> = {}
+  for (const prompt of prompts) {
+    drafts[prompt.id] = prompt.content || ''
+    saved[prompt.id] = prompt.content || ''
+  }
+  promptDrafts.value = drafts
+  savedPrompts.value = saved
+  if (!drafts[activePromptId.value] && prompts[0]) {
+    activePromptId.value = prompts[0].id
+  }
+  applyPromptSections(activePromptId.value)
+}
+
+const savePrompt = async (promptId: string) => {
+  const content = (promptDrafts.value[promptId] || '').trim()
+  if (!content) {
+    setPromptStatus('Prompt cannot be empty.', true)
+    return
+  }
+
+  savingPrompt.value = true
+  setPromptStatus('Saving prompt...')
+  try {
+    const response = await analyticsStore.updateAnalysisPrompt(promptId, content)
+    const updated = response?.prompt
+    if (updated) {
+      const index = promptList.value.findIndex((item) => item.id === promptId)
+      if (index >= 0) {
+        promptList.value[index] = { ...promptList.value[index], ...updated }
+      }
+      promptDrafts.value[promptId] = updated.content
+      savedPrompts.value[promptId] = updated.content
+    } else {
+      savedPrompts.value[promptId] = content
+    }
+    setPromptStatus('Prompt saved successfully.')
+  } catch (error: any) {
+    const message = error?.status === 403
+      ? 'You do not have permission to save prompts. Log in as an administrator (is_staff user).'
+      : (error?.message || 'Failed to save prompt.')
+    setPromptStatus(message, true)
+  } finally {
+    savingPrompt.value = false
+  }
+}
+
+const cancelPromptEdits = (promptId: string) => {
+  promptDrafts.value[promptId] = savedPrompts.value[promptId] || ''
+  setPromptStatus('Changes discarded.')
+}
+
+const resetPrompt = async (promptId: string) => {
+  savingPrompt.value = true
+  setPromptStatus('Resetting prompt...')
+  try {
+    const response = await analyticsStore.resetAnalysisPrompt(promptId)
+    const updated = (response?.prompts || []).find((item: AnalysisPromptRecord) => item.id === promptId)
+    if (updated) {
+      const index = promptList.value.findIndex((item) => item.id === promptId)
+      if (index >= 0) {
+        promptList.value[index] = { ...promptList.value[index], ...updated }
+      }
+      promptDrafts.value[promptId] = updated.content
+      savedPrompts.value[promptId] = updated.content
+    }
+    setPromptStatus('Prompt reset to default.')
+  } catch (error: any) {
+    const message = error?.status === 403
+      ? 'You do not have permission to reset prompts. Log in as an administrator (is_staff user).'
+      : (error?.message || 'Failed to reset prompt.')
+    setPromptStatus(message, true)
+  } finally {
+    savingPrompt.value = false
   }
 }
 
@@ -721,25 +934,45 @@ const formatFileSize = (bytes: number) => {
 }
 
 const loadPromptConfig = async () => {
+  loadingPrompts.value = true
   try {
-    const config = await analyticsStore.fetchReportPromptConfig()
-    promptConfig.value = config
+    const response = await analyticsStore.fetchReportPromptConfig()
+    promptConfig.value = response?.config || null
+    canEditPrompts.value = Boolean(response?.is_admin)
 
-    // If backend provides a system prompt template, use it as the analysis prompt
-    if (promptConfig.value?.system_prompt_template) {
-      analysisPrompt.value = promptConfig.value.system_prompt_template
+    const prompts = response?.prompts || []
+    if (prompts.length) {
+      hydratePromptState(prompts)
+    } else {
+      hydratePromptState([
+        {
+          id: 'financial_dashboard',
+          title: 'Financial Dashboard (Management Report)',
+          content: FINANCIAL_DASHBOARD_REPORT_PROMPT,
+        },
+      ])
     }
 
     const defaultTemplate = templateOptions.value.find((template) => template.id === 'three_page_standard')
       || templateOptions.value[0]
     if (defaultTemplate) {
       selectedTemplate.value = defaultTemplate.id
-      if (defaultTemplate.sections?.length) {
+      if (defaultTemplate.sections?.length && !selectedSections.value.length) {
         selectedSections.value = [...defaultTemplate.sections]
       }
     }
   } catch (error) {
     console.error('Failed to load prompt config:', error)
+    hydratePromptState([
+      {
+        id: 'financial_dashboard',
+        title: 'Financial Dashboard (Management Report)',
+        content: FINANCIAL_DASHBOARD_REPORT_PROMPT,
+      },
+    ])
+    setPromptStatus('Could not load saved prompts. Using local fallback.', true)
+  } finally {
+    loadingPrompts.value = false
   }
 }
 
