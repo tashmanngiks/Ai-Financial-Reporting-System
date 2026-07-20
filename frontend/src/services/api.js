@@ -49,6 +49,9 @@ export const api = {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('prompt', prompt)
+    if (reportOptions?.dataset_type) {
+      formData.append('dataset_type', reportOptions.dataset_type)
+    }
     if (description) {
       formData.append('description', description)
     }
@@ -170,6 +173,10 @@ export const api = {
   // System
   getSystemHealth() {
     return apiClient.get('/health/')
+  },
+
+  getCurrentUser() {
+    return apiClient.get('/auth/me/')
   },
 
   // Authentication

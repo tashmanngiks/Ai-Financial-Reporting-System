@@ -13,7 +13,7 @@
               </div>
               <div>
                 <h1 class="text-3xl font-bold text-white">Upload Financial Data</h1>
-                <p class="text-[#E6F7FB] text-lg mt-1">Upload JSON data and describe the report you need</p>
+                <p class="text-[#E6F7FB] text-lg mt-1">Choose a dataset type first, then upload the matching JSON file</p>
               </div>
             </div>
             <div class="bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">
@@ -110,7 +110,7 @@
             <div class="flex items-center justify-between mb-4">
               <div>
                 <h3 class="text-sm font-semibold text-gray-900">Report Settings</h3>
-                <p class="text-xs text-gray-600">Choose the template, sections, and output preferences.</p>
+                <p class="text-xs text-gray-600">Select the dataset type first. The matching prompt and template are fixed automatically.</p>
               </div>
               <button
                 type="button"
@@ -121,6 +121,26 @@
               </button>
             </div>
 
+            <div class="mb-4">
+              <label class="block" for="dataset-type">
+                <span class="text-xs font-semibold text-gray-700">Dataset Type</span>
+                <select
+                  id="dataset-type"
+                  name="dataset_type"
+                  v-model="datasetType"
+                  class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#08AAC7] bg-white text-sm"
+                >
+                  <option value="">Select one dataset type</option>
+                  <option v-for="option in datasetOptions" :key="option.id" :value="option.id">
+                    {{ option.label }}
+                  </option>
+                </select>
+              </label>
+              <p v-if="datasetType" class="mt-2 text-xs text-gray-600">
+                Selected template: <span class="font-medium text-gray-900">{{ selectedDatasetConfig?.templateLabel }}</span>
+              </p>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label class="block" for="report-template">
                 <span class="text-xs font-semibold text-gray-700">Template</span>
@@ -128,10 +148,11 @@
                   id="report-template"
                   name="template"
                   v-model="selectedTemplate"
+                  :disabled="true"
                   class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#08AAC7] bg-white text-sm"
                 >
-                  <option v-for="template in templateOptions" :key="template.id" :value="template.id">
-                    {{ template.label }}
+                  <option v-for="option in datasetOptions" :key="option.templateId" :value="option.templateId">
+                    {{ option.templateLabel }}
                   </option>
                 </select>
               </label>
@@ -223,106 +244,53 @@
             </div>
           </div>
 
-          <!-- AI Analysis Prompts -->
+          <!-- Dataset Analysis Prompt -->
           <div class="mt-6 p-4 bg-white rounded-xl border border-gray-200">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
               <div>
-                <h3 class="text-sm font-semibold text-gray-900">AI Analysis Prompts</h3>
+                <h3 class="text-sm font-semibold text-gray-900">Dataset Analysis Prompt</h3>
                 <p class="text-xs text-gray-600 mt-1">
-                  Choose a prompt for this upload. Administrators can edit and save improvements permanently.
+                  The selected dataset automatically loads its master prompt for report generation.
                 </p>
               </div>
-              <span
-                v-if="promptStatusMessage"
-                class="text-xs font-medium px-3 py-1 rounded-full"
-                :class="promptStatusIsError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'"
-              >
-                {{ promptStatusMessage }}
-              </span>
             </div>
 
-            <div v-if="loadingPrompts" class="py-8 text-center text-sm text-gray-500">
-              <div class="loading-spinner w-6 h-6 mx-auto mb-2"></div>
-              Loading saved prompts...
-            </div>
-
-            <template v-else>
-              <div class="flex flex-wrap gap-2 mb-4">
-                <button
-                  v-for="prompt in promptList"
-                  :key="prompt.id"
-                  type="button"
-                  @click="selectPrompt(prompt.id)"
-                  class="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors"
-                  :class="activePromptId === prompt.id
-                    ? 'border-[#08AAC7] bg-[#08AAC7]/10 text-[#0691A8]'
-                    : 'border-gray-200 text-gray-700 hover:border-[#08AAC7]/40'"
-                >
-                  {{ prompt.title }}
-                </button>
-              </div>
-
-              <div v-for="prompt in promptList" :key="`editor-${prompt.id}`" v-show="activePromptId === prompt.id">
-                <label :for="`analysis-prompt-${prompt.id}`" class="block text-sm font-semibold text-gray-900 mb-2">
-                  {{ prompt.title }}
-                  <span v-if="activePromptId === prompt.id" class="text-red-500">*</span>
-                </label>
-                <p v-if="prompt.updated_at" class="text-xs text-gray-500 mb-2">
-                  Last saved: {{ formatPromptDate(prompt.updated_at) }}
-                  <span v-if="prompt.updated_by">by {{ prompt.updated_by }}</span>
-                </p>
-                <textarea
-                  :id="`analysis-prompt-${prompt.id}`"
-                  v-model="promptDrafts[prompt.id]"
-                  :readonly="!isAdmin"
-                  rows="14"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#08AAC7] focus:border-transparent text-sm font-mono"
-                  :class="{ 'bg-gray-50 cursor-not-allowed': !isAdmin }"
-                  placeholder="Describe the report structure and focus areas for the AI analysis."
-                />
-                <p class="text-xs text-gray-500 mt-2 text-right">
-                  {{ (promptDrafts[prompt.id] || '').length }} characters
-                </p>
-
-                <div v-if="isAdmin" class="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    @click="savePrompt(prompt.id)"
-                    :disabled="savingPrompt || !(promptDrafts[prompt.id] || '').trim()"
-                    class="px-4 py-2 text-sm font-medium rounded-lg bg-[#08AAC7] text-white hover:bg-[#0691A8] disabled:opacity-50"
-                  >
-                    <span v-if="savingPrompt">Saving...</span>
-                    <span v-else>Save Changes</span>
-                  </button>
-                  <button
-                    type="button"
-                    @click="cancelPromptEdits(prompt.id)"
-                    :disabled="savingPrompt"
-                    class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-                  >
-                    Cancel Changes
-                  </button>
-                  <button
-                    type="button"
-                    @click="resetPrompt(prompt.id)"
-                    :disabled="savingPrompt"
-                    class="px-4 py-2 text-sm font-medium rounded-lg border border-amber-300 text-amber-800 hover:bg-amber-50"
-                  >
-                    Reset to Default
-                  </button>
+            <div v-if="selectedDatasetConfig" class="space-y-4">
+              <div class="flex items-center justify-between gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200">
+                <div>
+                  <p class="text-sm font-semibold text-gray-900">{{ selectedDatasetConfig.label }}</p>
+                  <p class="text-xs text-gray-600">{{ selectedDatasetConfig.description }}</p>
                 </div>
-                <p v-else class="mt-2 text-xs text-gray-500">
-                  Only administrators can edit and save prompts. You can still use the latest saved version for report generation.
-                </p>
+                <div class="text-xs font-medium px-3 py-1 rounded-full bg-[#08AAC7]/10 text-[#0691A8]">
+                  {{ selectedDatasetConfig.templateLabel }}
+                </div>
               </div>
-            </template>
+              <div class="flex flex-col gap-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p class="text-sm font-medium text-gray-900">Master prompt loaded</p>
+                  <p class="text-xs text-gray-600 mt-1">
+                    The report will use the saved prompt for {{ selectedDatasetConfig.label }}. You do not need to re-enter it here.
+                  </p>
+                </div>
+                <router-link
+                  to="/prompt-editor"
+                  class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg bg-[#08AAC7] text-white hover:bg-[#0691A8] transition-colors duration-200"
+                >
+                  Open Prompt Editor
+                </router-link>
+              </div>
+            </div>
+
+            <div v-else class="py-6 text-sm text-gray-500">
+              Select a dataset type to load its master prompt for report generation.
+            </div>
           </div>
 
           <!-- Upload Button -->
           <div class="mt-6">
             <button
               @click="handleUpload"
-              :disabled="!selectedFile || !analysisPrompt.trim() || analyticsStore.loading.upload || loadingPrompts"
+              :disabled="!selectedFile || !datasetType || !analysisPrompt.trim() || analyticsStore.loading.upload"
               class="w-full px-6 py-4 bg-gradient-to-r from-[#08AAC7] to-[#0691A8] text-white rounded-xl hover:from-[#0691A8] hover:to-[#057A8F] transition-all duration-300 font-medium shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
               <span v-if="!analyticsStore.loading.upload" class="flex items-center justify-center">
@@ -605,7 +573,7 @@
           </div>
           <div class="mt-4 flex space-x-3">
             <button
-              @click="analyticsStore.clearCurrentUpload(); promptDrafts[activePromptId] = savedPrompts[activePromptId] || ''"
+              @click="analyticsStore.clearCurrentUpload(); syncPromptDraft()"
               class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-300 font-medium"
             >
               Try Again
@@ -629,7 +597,8 @@ import { useRouter } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/services/api'
-import { FINANCIAL_DASHBOARD_REPORT_PROMPT } from '@/constants/reportPrompts'
+
+type DatasetType = 'wacc' | 'money_market' | 'financial_instruments'
 
 type AnalysisPromptRecord = {
   id: string
@@ -647,10 +616,6 @@ const authStore = useAuthStore()
 
 // Reactive state
 const selectedFile = ref<File | null>(null)
-const promptList = ref<AnalysisPromptRecord[]>([])
-const activePromptId = ref('financial_dashboard')
-const promptDrafts = ref<Record<string, string>>({})
-const savedPrompts = ref<Record<string, string>>({})
 const loadingPrompts = ref(true)
 const savingPrompt = ref(false)
 const promptStatusMessage = ref('')
@@ -658,7 +623,8 @@ const promptStatusIsError = ref(false)
 const dragOver = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const promptConfig = ref<Record<string, any> | null>(null)
-const selectedTemplate = ref('three_page_standard')
+const datasetType = ref<DatasetType | ''>('')
+const selectedTemplate = ref('')
 const reportLength = ref('standard')
 const detailLevel = ref('balanced')
 const outputFormat = ref('pdf')
@@ -669,6 +635,49 @@ const selectedSections = ref<string[]>([
   'risk_assessment',
   'recommendations',
 ])
+const promptDraft = ref('')
+
+const datasetOptions = [
+  {
+    id: 'wacc' as const,
+    label: 'WACC',
+    description: 'Weighted Average Cost of Capital analysis.',
+    promptId: 'wacc_analysis',
+    templateId: 'wacc_report',
+    templateLabel: 'WACC Report',
+    sections: ['executive_summary', 'wacc_analysis', 'financial_ratios', 'risk_assessment', 'benchmark_comparison', 'recommendations'],
+  },
+  {
+    id: 'money_market' as const,
+    label: 'Money Market',
+    description: 'Short-term liquidity and money market analysis.',
+    promptId: 'money_market_analysis',
+    templateId: 'money_market_report',
+    templateLabel: 'Money Market Report',
+    sections: ['executive_summary', 'money_market_analysis', 'market_trends', 'risk_assessment', 'benchmark_comparison', 'recommendations'],
+  },
+  {
+    id: 'financial_instruments' as const,
+    label: 'Financial Instruments',
+    description: 'Bonds, equities, derivatives, and portfolio analysis.',
+    promptId: 'financial_instruments_analysis',
+    templateId: 'financial_instruments_report',
+    templateLabel: 'Financial Instruments Report',
+    sections: ['executive_summary', 'investment_analysis', 'market_trends', 'financial_ratios', 'risk_assessment', 'recommendations'],
+  },
+] as const
+
+const selectedDatasetConfig = computed(() => {
+  return datasetOptions.find((option) => option.id === datasetType.value) || null
+})
+
+const selectedPromptId = computed(() => selectedDatasetConfig.value?.promptId || '')
+const selectedPromptRecord = computed(() => {
+  const promptId = selectedPromptId.value
+  if (!promptId) return null
+  return promptConfig.value?.analysis_prompts?.[promptId] || null
+})
+const analysisPrompt = computed(() => promptDraft.value)
 
 const templateOptions = computed(() => {
   const templates = promptConfig.value?.templates || {}
@@ -745,8 +754,6 @@ const canEditPrompts = ref(false)
 
 const isAdmin = computed(() => canEditPrompts.value || authStore.isAdmin)
 
-const analysisPrompt = computed(() => promptDrafts.value[activePromptId.value] || '')
-
 const setPromptStatus = (message: string, isError = false) => {
   promptStatusMessage.value = message
   promptStatusIsError.value = isError
@@ -765,36 +772,31 @@ const formatPromptDate = (value?: string | null) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 
-const applyPromptSections = (promptId: string) => {
-  const prompt = promptList.value.find((item) => item.id === promptId)
+const applySelectedDatasetSections = () => {
+  if (selectedDatasetConfig.value?.sections?.length) {
+    selectedSections.value = [...selectedDatasetConfig.value.sections]
+  }
+}
+
+const syncPromptDraft = () => {
+  const promptId = selectedPromptId.value
+  if (!promptId) {
+    promptDraft.value = ''
+    return
+  }
+
+  const prompt = selectedPromptRecord.value
+  promptDraft.value = prompt?.content || ''
   if (prompt?.recommended_sections?.length) {
     selectedSections.value = [...prompt.recommended_sections]
+  } else {
+    applySelectedDatasetSections()
   }
 }
 
-const selectPrompt = (promptId: string) => {
-  activePromptId.value = promptId
-  applyPromptSections(promptId)
-}
-
-const hydratePromptState = (prompts: AnalysisPromptRecord[]) => {
-  promptList.value = prompts
-  const drafts: Record<string, string> = {}
-  const saved: Record<string, string> = {}
-  for (const prompt of prompts) {
-    drafts[prompt.id] = prompt.content || ''
-    saved[prompt.id] = prompt.content || ''
-  }
-  promptDrafts.value = drafts
-  savedPrompts.value = saved
-  if (!drafts[activePromptId.value] && prompts[0]) {
-    activePromptId.value = prompts[0].id
-  }
-  applyPromptSections(activePromptId.value)
-}
-
-const savePrompt = async (promptId: string) => {
-  const content = (promptDrafts.value[promptId] || '').trim()
+const savePrompt = async () => {
+  const promptId = selectedPromptId.value
+  const content = promptDraft.value.trim()
   if (!content) {
     setPromptStatus('Prompt cannot be empty.', true)
     return
@@ -805,16 +807,10 @@ const savePrompt = async (promptId: string) => {
   try {
     const response = await analyticsStore.updateAnalysisPrompt(promptId, content)
     const updated = response?.prompt
-    if (updated) {
-      const index = promptList.value.findIndex((item) => item.id === promptId)
-      if (index >= 0) {
-        promptList.value[index] = { ...promptList.value[index], ...updated }
-      }
-      promptDrafts.value[promptId] = updated.content
-      savedPrompts.value[promptId] = updated.content
-    } else {
-      savedPrompts.value[promptId] = content
+    if (updated?.content) {
+      promptDraft.value = updated.content
     }
+    await loadPromptConfig(false)
     setPromptStatus('Prompt saved successfully.')
   } catch (error: any) {
     const message = error?.status === 403
@@ -826,25 +822,22 @@ const savePrompt = async (promptId: string) => {
   }
 }
 
-const cancelPromptEdits = (promptId: string) => {
-  promptDrafts.value[promptId] = savedPrompts.value[promptId] || ''
+const cancelPromptEdits = () => {
+  syncPromptDraft()
   setPromptStatus('Changes discarded.')
 }
 
-const resetPrompt = async (promptId: string) => {
+const resetPrompt = async () => {
+  const promptId = selectedPromptId.value
   savingPrompt.value = true
   setPromptStatus('Resetting prompt...')
   try {
     const response = await analyticsStore.resetAnalysisPrompt(promptId)
     const updated = (response?.prompts || []).find((item: AnalysisPromptRecord) => item.id === promptId)
-    if (updated) {
-      const index = promptList.value.findIndex((item) => item.id === promptId)
-      if (index >= 0) {
-        promptList.value[index] = { ...promptList.value[index], ...updated }
-      }
-      promptDrafts.value[promptId] = updated.content
-      savedPrompts.value[promptId] = updated.content
+    if (updated?.content) {
+      promptDraft.value = updated.content
     }
+    await loadPromptConfig(false)
     setPromptStatus('Prompt reset to default.')
   } catch (error: any) {
     const message = error?.status === 403
@@ -865,11 +858,13 @@ const clearSections = () => {
 }
 
 const resetReportSettings = () => {
-  selectedTemplate.value = 'three_page_standard'
+  datasetType.value = ''
+  selectedTemplate.value = ''
   reportLength.value = 'standard'
   detailLevel.value = 'balanced'
   outputFormat.value = 'pdf'
-  applyTemplateSections('three_page_standard')
+  selectedSections.value = []
+  promptDraft.value = ''
 }
 
 // Methods
@@ -893,11 +888,12 @@ const openFilePicker = () => {
 }
 
 const handleUpload = async () => {
-  if (!selectedFile.value || !analysisPrompt.value.trim()) return
+  if (!selectedFile.value || !datasetType.value || !analysisPrompt.value.trim()) return
 
   try {
     const reportOptions = {
       template: selectedTemplate.value,
+      dataset_type: datasetType.value,
       sections: selectedSections.value,
       include_sections: selectedSections.value,
       exclude_sections: sectionOptions.value
@@ -933,44 +929,23 @@ const formatFileSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-const loadPromptConfig = async () => {
+const loadPromptConfig = async (showStatus = true) => {
   loadingPrompts.value = true
   try {
     const response = await analyticsStore.fetchReportPromptConfig()
     promptConfig.value = response?.config || null
     canEditPrompts.value = Boolean(response?.is_admin)
 
-    const prompts = response?.prompts || []
-    if (prompts.length) {
-      hydratePromptState(prompts)
-    } else {
-      hydratePromptState([
-        {
-          id: 'financial_dashboard',
-          title: 'Financial Dashboard (Management Report)',
-          content: FINANCIAL_DASHBOARD_REPORT_PROMPT,
-        },
-      ])
-    }
-
-    const defaultTemplate = templateOptions.value.find((template) => template.id === 'three_page_standard')
-      || templateOptions.value[0]
-    if (defaultTemplate) {
-      selectedTemplate.value = defaultTemplate.id
-      if (defaultTemplate.sections?.length && !selectedSections.value.length) {
-        selectedSections.value = [...defaultTemplate.sections]
-      }
+    syncPromptDraft()
+    if (selectedDatasetConfig.value) {
+      selectedTemplate.value = selectedDatasetConfig.value.templateId
+      applySelectedDatasetSections()
     }
   } catch (error) {
     console.error('Failed to load prompt config:', error)
-    hydratePromptState([
-      {
-        id: 'financial_dashboard',
-        title: 'Financial Dashboard (Management Report)',
-        content: FINANCIAL_DASHBOARD_REPORT_PROMPT,
-      },
-    ])
-    setPromptStatus('Could not load saved prompts. Using local fallback.', true)
+    if (showStatus) {
+      setPromptStatus('Could not load saved prompts.', true)
+    }
   } finally {
     loadingPrompts.value = false
   }
@@ -980,7 +955,17 @@ onMounted(() => {
   loadPromptConfig()
 })
 
-watch(selectedTemplate, (templateId) => {
-  applyTemplateSections(templateId)
+watch(datasetType, (value) => {
+  const config = datasetOptions.find((option) => option.id === value) || null
+  if (config) {
+    selectedTemplate.value = config.templateId
+    selectedSections.value = [...config.sections]
+    syncPromptDraft()
+    setPromptStatus(`${config.label} dataset selected.`, false)
+  } else {
+    selectedTemplate.value = ''
+    selectedSections.value = []
+    promptDraft.value = ''
+  }
 })
 </script>

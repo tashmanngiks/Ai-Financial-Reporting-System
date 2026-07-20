@@ -59,16 +59,6 @@
         </div>
       </div>
 
-      <!-- User prompt -->
-      <div v-if="userPrompt" class="card">
-        <div class="card-header">
-          <h2 class="text-lg font-medium text-gray-900">Your analysis request</h2>
-        </div>
-        <div class="card-body">
-          <p class="text-sm text-gray-700 whitespace-pre-wrap break-words">{{ userPrompt }}</p>
-        </div>
-      </div>
-
       <div v-if="reportOptionsSummary" class="card">
         <div class="card-header">
           <h2 class="text-lg font-medium text-gray-900">Report settings</h2>

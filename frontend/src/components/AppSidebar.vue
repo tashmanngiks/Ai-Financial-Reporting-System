@@ -42,8 +42,11 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                 </svg>
                 <div class="flex-1">
-                  <div class="text-xs font-medium text-white truncate group-hover:text-[#08AAC7] transition-colors">
-                    {{ report.bank_name }}
+                  <div
+                    class="text-xs font-medium text-white truncate group-hover:text-[#08AAC7] transition-colors"
+                    :title="getReportLabel(report, true)"
+                  >
+                    {{ getReportLabel(report) }}
                   </div>
                   <div class="text-xs text-gray-500">
                     {{ formatDate(report.generated_at) }}
@@ -120,6 +123,30 @@ const formatDate = (dateString: string) => {
     month: 'short',
     day: 'numeric',
   })
+}
+
+const getReportLabel = (report: any, full = false) => {
+  const bankName = String(report?.bank_name || '').replace(/\s+/g, ' ').trim()
+  if (bankName) {
+    const words = bankName.split(' ').filter(Boolean)
+    if (full) return bankName
+    if (words.length <= 2 && bankName.length <= 24) return bankName
+    return words.slice(0, 2).join(' ')
+  }
+
+  const rawLabel =
+    report?.metadata?.title ||
+    report?.title ||
+    'Financial Report'
+
+  const label = String(rawLabel).replace(/\s+/g, ' ').trim()
+  if (full) return label
+
+  const maxLength = 22
+  if (label.length <= maxLength) return label
+
+  const trimmed = label.slice(0, maxLength).trimEnd()
+  return `${trimmed.replace(/[,.:-]+$/, '').trimEnd()}…`
 }
 
 // No mock data function - using real API endpoints only
