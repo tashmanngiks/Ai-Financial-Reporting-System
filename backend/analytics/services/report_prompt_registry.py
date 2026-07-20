@@ -208,6 +208,45 @@ Summarize the overall financial health and outlook of the organization. State wh
                 "recommendations",
             ],
         },
+        "wacc_report": {
+            "name": "WACC Report",
+            "length": "standard",
+            "detail_level": "balanced",
+            "sections": [
+                "executive_summary",
+                "wacc_analysis",
+                "financial_ratios",
+                "risk_assessment",
+                "benchmark_comparison",
+                "recommendations",
+            ],
+        },
+        "money_market_report": {
+            "name": "Money Market Report",
+            "length": "standard",
+            "detail_level": "balanced",
+            "sections": [
+                "executive_summary",
+                "money_market_analysis",
+                "market_trends",
+                "risk_assessment",
+                "benchmark_comparison",
+                "recommendations",
+            ],
+        },
+        "financial_instruments_report": {
+            "name": "Financial Instruments Report",
+            "length": "standard",
+            "detail_level": "balanced",
+            "sections": [
+                "executive_summary",
+                "investment_analysis",
+                "market_trends",
+                "financial_ratios",
+                "risk_assessment",
+                "recommendations",
+            ],
+        },
         "three_page_standard": {
             "name": "Three-Page Standard Report",
             "length": "standard",
@@ -385,6 +424,12 @@ class ReportPromptRegistry:
             template_name = "three_page_standard"
         elif template_name in {"comprehensive", "long"}:
             template_name = "comprehensive_multi_page"
+        elif template_name in {"wacc", "wacc_report"}:
+            template_name = "wacc_report"
+        elif template_name in {"money_market", "money_market_report"}:
+            template_name = "money_market_report"
+        elif template_name in {"financial_instruments", "financial_instruments_report"}:
+            template_name = "financial_instruments_report"
 
         template = self.get_template(template_name)
         available_sections = list(self.get_section_library().keys())
@@ -469,13 +514,14 @@ class ReportPromptRegistry:
         prompt_map = {
             "executive_summary": (
                 f"Write a concise executive summary for {bank_name} for {data_period}. "
-                "Include key findings, important trends and anomalies, short bullet highlights for the entire report, and major recommendations. "
+                "Include the overall assessment, the main risks, the biggest opportunities, important trends and anomalies, "
+                "and the top recommendation. This is the only section that may use concise bullet points for key findings. "
                 "Keep it executive-ready and concise."
             ),
             "statistical_highlights": (
                 "Summarize minimum, maximum, average, and trend values for all relevant metrics. "
                 "Call out best-performing and worst-performing indicators. "
-                "Use tables or bullets where useful."
+                "Write in professional prose and use a table only if it improves clarity."
             ),
             "money_market_analysis": (
                 "Analyze money market conditions, short-term rates, liquidity conditions, and funding pressure. "
@@ -523,6 +569,8 @@ class ReportPromptRegistry:
             f"Write the {section_title} section using the available data for {bank_name} ({data_period}). "
             f"Use only the information available in these data areas: {available_data}.",
         )
+        if section_key != "executive_summary":
+            prompt += " Write this section as professional prose and avoid bullet points unless they are required for a table-like list of data points."
         return prompt
 
     def _merge(self, base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:

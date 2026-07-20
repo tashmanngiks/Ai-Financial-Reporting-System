@@ -3,12 +3,19 @@
 import json
 import uuid
 from datetime import datetime
+from typing import Any
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from ..services.report_store import get_report, save_report
+from ..services.analysis_prompt_defaults import (
+    FINANCIAL_INSTRUMENTS_ANALYSIS_ID,
+    MONEY_MARKET_ANALYSIS_ID,
+    WACC_ANALYSIS_ID,
+)
+from ..services.prompt_settings_store import get_analysis_prompt
 from ..views import (
     AnalysisStatusView,
     FinancialDataUploadView,
@@ -20,6 +27,116 @@ from ..views import (
     normalize_json_for_analysis,
     perform_initial_ai_analysis,
 )
+
+
+DATASET_TYPE_RULES: dict[str, dict[str, Any]] = {
+    'wacc': {
+        'label': 'WACC',
+        'prompt_id': WACC_ANALYSIS_ID,
+        'template': 'wacc_report',
+        'signals': [
+            ['wacc', 'weighted average cost of capital'],
+            ['cost of equity', 'cost_equity', 'equity cost'],
+            ['cost of debt', 'cost_debt', 'debt cost'],
+            ['tax rate', 'tax_rate', 'effective tax rate'],
+            ['capital structure', 'capital_structure', 'equity ratio', 'debt ratio'],
+            ['beta', 'risk free rate', 'risk-free rate', 'market risk premium'],
+        ],
+        'missing_indicators': ['cost of equity', 'cost of debt', 'tax rate', 'capital structure', 'WACC'],
+    },
+    'money_market': {
+        'label': 'Money Market',
+        'prompt_id': MONEY_MARKET_ANALYSIS_ID,
+        'template': 'money_market_report',
+        'signals': [
+            ['treasury bill', 'treasury bills', 'tbill', 't-bill'],
+            ['commercial paper'],
+            ['certificate of deposit', 'certificates of deposit', 'cd rate', 'cds'],
+            ['interbank rate', 'interbank rates'],
+            ['repo rate', 'repo rates', 'repurchase agreement'],
+            ['liquidity', 'short-term', 'short term'],
+        ],
+        'missing_indicators': ['treasury bills', 'commercial paper', 'certificates of deposit', 'interbank rates', 'repo rates'],
+    },
+    'financial_instruments': {
+        'label': 'Financial Instruments',
+        'prompt_id': FINANCIAL_INSTRUMENTS_ANALYSIS_ID,
+        'template': 'financial_instruments_report',
+        'signals': [
+            ['bond', 'bonds', 'treasury security', 'treasury securities'],
+            ['equity', 'equities', 'stock', 'shares'],
+            ['derivative', 'derivatives', 'option', 'swap', 'future', 'futures'],
+            ['mutual fund', 'mutual funds'],
+            ['etf', 'exchange-traded fund', 'exchange traded fund'],
+            ['commodity', 'commodities', 'foreign exchange', 'fx'],
+        ],
+        'missing_indicators': ['bonds', 'equities', 'derivatives', 'mutual funds', 'ETFs'],
+    },
+}
+
+
+def _collect_text_tokens(value: Any, parts: list[str], depth: int = 0) -> None:
+    if depth > 8:
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            parts.append(str(key))
+            _collect_text_tokens(item, parts, depth + 1)
+    elif isinstance(value, list):
+        for item in value[:100]:
+            _collect_text_tokens(item, parts, depth + 1)
+    elif isinstance(value, str):
+        parts.append(value)
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        parts.append(str(value))
+
+
+def _infer_dataset_type(json_data: Any) -> str | None:
+    parts: list[str] = []
+    _collect_text_tokens(json_data, parts)
+    text = ' '.join(parts).lower()
+
+    scores: dict[str, int] = {}
+    for dataset_type, rule in DATASET_TYPE_RULES.items():
+        score = 0
+        for signal_group in rule['signals']:
+            if any(signal in text for signal in signal_group):
+                score += 1
+        scores[dataset_type] = score
+
+    if not scores:
+        return None
+
+    best_type = max(scores, key=scores.get)
+    if scores[best_type] < 2:
+        return None
+    return best_type
+
+
+def _validate_dataset_type(json_data: Any, selected_type: str) -> tuple[bool, str | None, str | None]:
+    selected = (selected_type or '').strip().lower()
+    if selected not in DATASET_TYPE_RULES:
+        return False, None, 'Please select one dataset type before uploading: WACC, Money Market, or Financial Instruments.'
+
+    detected = _infer_dataset_type(json_data)
+    if detected == selected:
+        return True, detected, None
+
+    selected_label = DATASET_TYPE_RULES[selected]['label']
+    if detected:
+        detected_label = DATASET_TYPE_RULES[detected]['label']
+        return (
+            False,
+            detected,
+            f'The uploaded data appears to contain {detected_label} information, but you selected {selected_label}. Please either upload the correct dataset or change the dataset type.',
+        )
+
+    missing = ', '.join(DATASET_TYPE_RULES[selected]['missing_indicators'])
+    return (
+        False,
+        None,
+        f'Unable to verify the selected {selected_label} dataset. Required indicators such as {missing} were not found in the uploaded file.',
+    )
 
 
 @csrf_exempt
@@ -92,16 +209,22 @@ def simple_upload_view(request):
             except json.JSONDecodeError:
                 report_options = {}
 
+        selected_dataset_type = (
+            request.POST.get('dataset_type')
+            or body.get('dataset_type')
+            or report_options.get('dataset_type')
+            or ''
+        ).strip().lower()
+
         if 'file' not in request.FILES:
             return JsonResponse({'error': 'No file provided'}, status=400)
 
         uploaded_file = request.FILES['file']
         description = request.POST.get('description', '')
-        prompt = request.POST.get('prompt', '').strip()
 
-        if not prompt:
+        if not selected_dataset_type:
             return JsonResponse({
-                'error': 'Analysis prompt is required. Describe what you want in the report.',
+                'error': 'Please select one dataset type before uploading: WACC, Money Market, or Financial Instruments.',
             }, status=400)
 
         if not uploaded_file.name.endswith('.json'):
@@ -113,8 +236,38 @@ def simple_upload_view(request):
         if json_data is None:
             return JsonResponse({'error': 'JSON file is empty'}, status=400)
 
+        is_dataset_validated, detected_dataset_type, validation_error = _validate_dataset_type(
+            json_data,
+            selected_dataset_type,
+        )
+        if not is_dataset_validated:
+            response = {
+                'error': validation_error or 'Uploaded dataset does not match the selected type.',
+                'selected_dataset_type': selected_dataset_type,
+            }
+            if detected_dataset_type:
+                response['detected_dataset_type'] = detected_dataset_type
+            return JsonResponse(response, status=400)
+
         normalized_json, original_json = normalize_json_for_analysis(json_data)
         bank_name, data_period = extract_entity_metadata(json_data)
+
+        dataset_rule = DATASET_TYPE_RULES[selected_dataset_type]
+        dataset_prompt = get_analysis_prompt(dataset_rule['prompt_id'])
+        prompt = (dataset_prompt.content if dataset_prompt else '').strip()
+        if not prompt:
+            return JsonResponse({'error': 'Selected dataset analysis prompt is unavailable.'}, status=500)
+
+        resolved_report_options = {
+            'template': dataset_rule['template'],
+            'sections': [],
+            'include_sections': [],
+            'exclude_sections': [],
+            'length': request.POST.get('length') or body.get('length') or 'standard',
+            'detail_level': request.POST.get('detail_level') or body.get('detail_level') or 'balanced',
+            'output_format': request.POST.get('output_format') or body.get('output_format') or 'json',
+            'dataset_type': selected_dataset_type,
+        }
 
         report_id = str(uuid.uuid4())
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -124,22 +277,11 @@ def simple_upload_view(request):
             prompt,
             original_json,
             ai_analysis,
-            report_options=report_options or {
-                'template': request.POST.get('template') or body.get('template'),
-                'sections': body.get('sections') or request.POST.get('sections') or [],
-                'include_sections': body.get('include_sections') or request.POST.get('include_sections') or [],
-                'exclude_sections': body.get('exclude_sections') or request.POST.get('exclude_sections') or [],
-                'length': body.get('length') or request.POST.get('length'),
-                'detail_level': body.get('detail_level') or request.POST.get('detail_level'),
-                'output_format': body.get('output_format') or request.POST.get('output_format'),
-            },
+            report_options=resolved_report_options,
         )
         comprehensive_generated = len(full_ai_analysis) > 0 and ai_enhanced
 
-        prompt_title = prompt.strip().split('\n')[0].strip()
-        if prompt_title.startswith('#'):
-            prompt_title = prompt_title.lstrip('#').strip()
-        prompt_title = prompt_title[:120] or f'{bank_name} Analysis'
+        prompt_title = dataset_rule['label']
 
         report_data = {
             'id': report_id,
@@ -147,6 +289,8 @@ def simple_upload_view(request):
             'size': uploaded_file.size,
             'description': description,
             'user_prompt': prompt,
+            'dataset_type': selected_dataset_type,
+            'detected_dataset_type': detected_dataset_type or selected_dataset_type,
             'task_id': report_id,
             'uploaded_at': current_time,
             'status': 'completed',
@@ -168,6 +312,8 @@ def simple_upload_view(request):
                 'comprehensive_generated': comprehensive_generated,
                 'ai_enhanced': ai_enhanced,
                 'user_prompt': prompt,
+                'dataset_type': selected_dataset_type,
+                'detected_dataset_type': detected_dataset_type or selected_dataset_type,
                 'original_json': original_json,
                 'normalized_json': normalized_json,
             },
@@ -192,6 +338,9 @@ def simple_upload_view(request):
             response_data['warning_code'] = (
                 'openai_quota_exceeded' if 'quota' in ai_error_msg.lower() else 'ai_unavailable'
             )
+
+        response_data['dataset_type'] = selected_dataset_type
+        response_data['detected_dataset_type'] = detected_dataset_type or selected_dataset_type
 
         for key, value in report_data.items():
             response_data[key] = value

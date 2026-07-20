@@ -82,8 +82,10 @@ def build_prompt_config_payload() -> dict[str, Any]:
     prompt_map = {prompt.prompt_id: prompt for prompt in prompts}
 
     config = deepcopy(DEFAULT_REPORT_PROMPT_CONFIG)
-    config["section_library"] = deepcopy(report_config.section_library or {})
-    config["templates"] = deepcopy(report_config.templates or {})
+    default_section_library = deepcopy(DEFAULT_REPORT_PROMPT_CONFIG.get("section_library", {}))
+    default_templates = deepcopy(DEFAULT_REPORT_PROMPT_CONFIG.get("templates", {}))
+    config["section_library"] = {**default_section_library, **deepcopy(report_config.section_library or {})}
+    config["templates"] = {**default_templates, **deepcopy(report_config.templates or {})}
     config["default_length"] = report_config.default_length
     config["default_detail_level"] = report_config.default_detail_level
 

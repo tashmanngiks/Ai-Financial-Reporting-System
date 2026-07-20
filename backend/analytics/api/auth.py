@@ -6,7 +6,10 @@ from django.contrib.auth import authenticate, login
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.permissions import IsAuthenticated
 
+from .authentication import CsrfExemptSessionAuthentication
 from ..views import login_view
 
 
@@ -46,4 +49,24 @@ def simple_login_view(request):
         return JsonResponse({'error': str(exc)}, status=400)
 
 
-__all__ = ['login_view', 'simple_login_view']
+@api_view(['GET'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated])
+def current_user_view(request):
+    """Return the authenticated Django session user."""
+    user = request.user
+    return JsonResponse({
+        'success': True,
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'email': getattr(user, 'email', ''),
+            'first_name': getattr(user, 'first_name', ''),
+            'last_name': getattr(user, 'last_name', ''),
+            'is_staff': user.is_staff,
+            'is_superuser': user.is_superuser,
+        },
+    })
+
+
+__all__ = ['login_view', 'simple_login_view', 'current_user_view']
