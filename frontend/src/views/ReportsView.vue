@@ -358,7 +358,7 @@
               <!-- Report Header -->
               <div class="flex justify-between items-start mb-4">
                 <div class="flex-1">
-                  <h3 class="font-bold text-gray-900 text-lg mb-1 group-hover:text-[#08AAC7] transition-colors">{{ report.bank_name }}</h3>
+                  <h3 class="font-bold text-gray-900 text-lg mb-1 group-hover:text-[#08AAC7] transition-colors">{{ getShortReportLabel(report) }}</h3>
                   <p class="text-sm text-gray-500">{{ report.data_period }}</p>
                 </div>
                 <div class="px-3 py-1 rounded-full text-xs font-medium"
@@ -458,6 +458,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { getShortReportLabel } from '@/utils/reportDisplay'
 import {
   DocumentTextIcon,
 } from '@heroicons/vue/24/outline'

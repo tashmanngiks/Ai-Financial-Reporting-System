@@ -13,7 +13,7 @@
             <div class="min-w-0 flex-1">
               <h1 class="text-2xl font-bold text-gray-900 break-words">{{ reportTitle }}</h1>
               <p class="text-gray-600 mt-1">
-                {{ report.bank_name || 'Financial Dataset' }} • {{ report.data_period || report.metadata?.period || 'Unknown period' }}
+                {{ getShortReportLabel(report) }} • {{ report.data_period || report.metadata?.period || 'Unknown period' }}
               </p>
               <p class="text-sm text-gray-500 mt-1">
                 {{ report.filename }} • Generated {{ report.uploaded_at || report.metadata?.generated_at }}
@@ -190,6 +190,7 @@
 import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { getShortReportLabel } from '@/utils/reportDisplay'
 import { ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -216,12 +217,7 @@ const reportOptionsSummary = computed(() => {
 const reportTitle = computed(() => {
   const r = report.value
   if (!r) return 'Analysis Report'
-  return (
-    r.metadata?.title ||
-    r.title ||
-    (userPrompt.value ? userPrompt.value.split('\n')[0].replace(/^#+\s*/, '').slice(0, 120) : null) ||
-    `${r.bank_name || 'Financial'} Analysis Report`
-  )
+  return getShortReportLabel(r)
 })
 
 const displaySections = computed(() => {
@@ -300,3 +296,4 @@ watch(
   }
 )
 </script>
+

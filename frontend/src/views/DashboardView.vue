@@ -192,7 +192,7 @@
               class="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-all duration-300 group"
             >
               <div class="flex-1">
-                <h4 class="font-semibold text-gray-900 group-hover:text-[#08AAC7] transition-colors">{{ report.bank_name }}</h4>
+                <h4 class="font-semibold text-gray-900 group-hover:text-[#08AAC7] transition-colors">{{ getShortReportLabel(report) }}</h4>
                 <p class="text-sm text-gray-500">{{ report.data_period }}</p>
               </div>
               <div class="flex items-center space-x-4">
@@ -368,6 +368,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { getShortReportLabel } from '@/utils/reportDisplay'
 
 const analyticsStore = useAnalyticsStore()
 

@@ -455,7 +455,7 @@
             <tr v-for="report in analyticsStore.reports" :key="report.id" class="hover:bg-gray-50 transition-colors">
               <td class="px-6 py-4 whitespace-nowrap">
                 <div class="flex items-center">
-                  <div class="font-medium text-gray-900">{{ report.bank_name }}</div>
+                  <div class="font-medium text-gray-900">{{ getShortReportLabel(report) }}</div>
                   <div class="text-sm text-gray-500">{{ report.data_period }}</div>
                 </div>
               </td>
@@ -582,6 +582,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, nextTick } from 'vue'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { getShortReportLabel } from '@/utils/reportDisplay'
 
 const analyticsStore = useAnalyticsStore()
 
@@ -680,7 +681,7 @@ const bestPerformingInstitution = computed(() => {
     return currentROA > bestROA ? current : best
   })
 
-  return bestReport.bank_name || 'Unknown Institution'
+  return getShortReportLabel(bestReport)
 })
 
 const riskDistribution = computed(() => {

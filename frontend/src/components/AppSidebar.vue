@@ -44,9 +44,9 @@
                 <div class="flex-1">
                   <div
                     class="text-xs font-medium text-white truncate group-hover:text-[#08AAC7] transition-colors"
-                    :title="getReportLabel(report, true)"
+                    :title="getFullReportLabel(report)"
                   >
-                    {{ getReportLabel(report) }}
+                    {{ getShortReportLabel(report) }}
                   </div>
                   <div class="text-xs text-gray-500">
                     {{ formatDate(report.generated_at) }}
@@ -64,6 +64,7 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { getFullReportLabel, getShortReportLabel } from '@/utils/reportDisplay'
 import {
   HomeIcon,
   DocumentArrowUpIcon,
@@ -123,30 +124,6 @@ const formatDate = (dateString: string) => {
     month: 'short',
     day: 'numeric',
   })
-}
-
-const getReportLabel = (report: any, full = false) => {
-  const bankName = String(report?.bank_name || '').replace(/\s+/g, ' ').trim()
-  if (bankName) {
-    const words = bankName.split(' ').filter(Boolean)
-    if (full) return bankName
-    if (words.length <= 2 && bankName.length <= 24) return bankName
-    return words.slice(0, 2).join(' ')
-  }
-
-  const rawLabel =
-    report?.metadata?.title ||
-    report?.title ||
-    'Financial Report'
-
-  const label = String(rawLabel).replace(/\s+/g, ' ').trim()
-  if (full) return label
-
-  const maxLength = 22
-  if (label.length <= maxLength) return label
-
-  const trimmed = label.slice(0, maxLength).trimEnd()
-  return `${trimmed.replace(/[,.:-]+$/, '').trimEnd()}…`
 }
 
 // No mock data function - using real API endpoints only
