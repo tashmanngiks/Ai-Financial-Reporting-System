@@ -279,12 +279,6 @@ def generate_pdf_report(report_data):
     story.append(Paragraph(f"Generated: {escape(str(report_data.get('uploaded_at', 'Unknown')))}", styles['Normal']))
     story.append(Spacer(1, 12))
 
-    user_prompt = report_data.get('user_prompt') or report_data.get('metadata', {}).get('user_prompt')
-    if user_prompt:
-        story.append(Paragraph("Analysis Prompt", styles['Heading2']))
-        story.append(Paragraph(escape(_export_plain_text(user_prompt)), styles['Normal']))
-        story.append(Spacer(1, 12))
-
     comprehensive = report_data.get('comprehensive_analysis', [])
     if comprehensive:
         story.append(Paragraph("AI Analysis Report", styles['Heading2']))
@@ -318,10 +312,6 @@ def generate_csv_report(report_data):
     for key, value in metrics.items():
         if key != 'sample_data':  # Skip large data objects
             output.write(f"{key},{value}\n")
-    
-    user_prompt = report_data.get('user_prompt') or report_data.get('metadata', {}).get('user_prompt')
-    if user_prompt:
-        output.write(f"User Prompt,\"{str(user_prompt).replace(chr(10), ' ')}\"\n")
 
     for section in report_data.get('comprehensive_analysis', []):
         title = section.get('title', 'Section')
@@ -342,11 +332,6 @@ def generate_word_report(report_data):
     doc.add_paragraph(f"Bank: {report_data.get('bank_name', 'Unknown Bank')}")
     doc.add_paragraph(f"Period: {report_data.get('data_period', 'Unknown Period')}")
     doc.add_paragraph(f"Generated: {report_data.get('uploaded_at', 'Unknown')}")
-
-    user_prompt = report_data.get('user_prompt') or report_data.get('metadata', {}).get('user_prompt')
-    if user_prompt:
-        doc.add_heading('Analysis Prompt', level=1)
-        doc.add_paragraph(_export_plain_text(user_prompt))
 
     comprehensive = report_data.get('comprehensive_analysis', [])
     if comprehensive:
