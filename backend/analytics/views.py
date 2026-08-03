@@ -2226,13 +2226,15 @@ def generate_comprehensive_ai_analysis(context):
             'data_period': context.get('data_period', 'Unknown Period'),
         })
         system_prompt = registry.build_system_prompt(report_context, report_options)
-        section_prompts = [
-            {
+        section_overrides = context.get('section_prompt_overrides') or {}
+        section_prompts = []
+        for section in report_options.get('sections', []):
+            override = section_overrides.get(section)
+            instruction = (override or '').strip() or registry.get_section_prompt(section, report_context)
+            section_prompts.append({
                 "section": section,
-                "instruction": registry.get_section_prompt(section, report_context),
-            }
-            for section in report_options.get('sections', [])
-        ]
+                "instruction": instruction,
+            })
 
         system_prompt += (
             "\nDATA SUMMARY:\n"

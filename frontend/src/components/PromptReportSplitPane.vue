@@ -1,36 +1,32 @@
 <template>
   <div class="flex flex-col border border-gray-200 rounded-xl overflow-hidden bg-white min-h-[75vh]">
-    <!-- Headers -->
+    <!-- Headers / actions -->
     <div class="grid grid-cols-1 lg:grid-cols-2 border-b bg-gray-50 shrink-0">
-      <div class="px-4 py-2.5 border-r border-gray-200 flex items-center justify-between gap-2">
-        <span class="text-[11px] font-semibold uppercase tracking-wider text-[#056F80]">
-          Source · Full Prompt
-        </span>
-        <div class="flex gap-1" v-if="selectedPair">
-          <button
-            v-if="selectedPair.module && isAdmin"
-            type="button"
-            class="text-xs px-2 py-1 rounded bg-[#08AAC7] text-white hover:bg-[#0691A8] disabled:opacity-50"
-            :disabled="saving"
-            @click="saveSelected"
-          >
-            {{ saving ? 'Saving…' : 'Save prompt' }}
-          </button>
-          <button
-            type="button"
-            class="text-xs px-2 py-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-            :disabled="regenerating || !selectedKey"
-            @click="regenerateSelected"
-          >
-            {{ regenerating ? 'Updating…' : 'Update selected section' }}
-          </button>
+      <div class="px-4 py-2.5 border-r border-gray-200 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-[#056F80]">
+            Source · Full Prompt
+          </span>
+          <p class="text-[11px] text-gray-500 mt-0.5">
+            Edit any section prompt, then regenerate only that section.
+          </p>
         </div>
+        <button
+          type="button"
+          class="text-xs px-3 py-1.5 rounded bg-[#08AAC7] text-white hover:bg-[#0691A8] disabled:opacity-50"
+          :disabled="!dirtyKeys.size || regenerating"
+          @click="regenerateChangedOnly"
+        >
+          {{ regenerating
+            ? `Updating ${regeneratingLabel}…`
+            : `Regenerate changed only (${dirtyKeys.size})` }}
+        </button>
       </div>
-      <div class="px-4 py-2.5 hidden lg:flex items-center justify-between">
+      <div class="px-4 py-2.5 hidden lg:flex items-center justify-between gap-2">
         <span class="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
           Output · Full Generated Report
         </span>
-        <span v-if="selectedPair" class="text-[11px] text-gray-500 truncate max-w-[50%]">
+        <span v-if="selectedPair" class="text-[11px] text-gray-500 truncate max-w-[55%]">
           Selected: {{ selectedPair.reportTitle }}
         </span>
       </div>
@@ -40,21 +36,19 @@
       Loading full prompt and report…
     </div>
 
-    <!-- Two full panes side by side -->
     <div v-else class="grid grid-cols-1 lg:grid-cols-2 flex-1 min-h-0" style="height: 70vh">
-      <!-- LEFT: whole prompt document -->
-      <div
-        ref="promptPane"
-        class="border-r border-gray-200 overflow-y-auto p-4 space-y-4 bg-white"
-      >
+      <!-- LEFT: editable prompts -->
+      <div class="border-r border-gray-200 overflow-y-auto p-4 space-y-4 bg-white">
         <section
           class="rounded-lg border p-3"
           :class="selectedKey === '__master__' ? 'border-[#08AAC7] bg-[#08AAC7]/5' : 'border-gray-200'"
           @click="selectedKey = '__master__'"
         >
           <h3 class="text-sm font-semibold text-gray-900 mb-1">Master Analysis Prompt</h3>
-          <p class="text-[11px] text-gray-500 mb-2">Dataset-level prompt used for this report</p>
-          <pre class="whitespace-pre-wrap font-mono text-xs text-gray-800 leading-relaxed">{{ masterPrompt || 'No master prompt stored.' }}</pre>
+          <p class="text-[11px] text-gray-500 mb-2">
+            Dataset-level context (section prompts below control each report block).
+          </p>
+          <pre class="whitespace-pre-wrap font-mono text-xs text-gray-800 leading-relaxed max-h-48 overflow-y-auto">{{ masterPrompt || 'No master prompt stored.' }}</pre>
         </section>
 
         <section
@@ -64,37 +58,47 @@
           class="rounded-lg border p-3 transition-colors"
           :class="selectedKey === pair.sectionKey
             ? 'border-[#08AAC7] bg-[#08AAC7]/10 ring-1 ring-[#08AAC7]/40'
-            : 'border-gray-200 hover:border-gray-300'"
+            : dirtyKeys.has(pair.sectionKey)
+              ? 'border-amber-300 bg-amber-50/40'
+              : 'border-gray-200 hover:border-gray-300'"
           @click="selectSection(pair.sectionKey, 'prompt')"
         >
           <div class="flex items-center justify-between gap-2 mb-2">
-            <h3 class="text-sm font-semibold text-gray-900">{{ pair.promptTitle }}</h3>
-            <span class="text-[11px] text-gray-500 shrink-0">
-              <template v-if="pair.module">v{{ pair.module.version_current }}</template>
-              <template v-if="staleKeys.has(pair.sectionKey)"> · pending</template>
-            </span>
+            <div>
+              <h3 class="text-sm font-semibold text-gray-900">{{ pair.promptTitle }}</h3>
+              <p class="text-[11px] text-gray-500">
+                <span v-if="pair.module">v{{ pair.module.version_current }}</span>
+                <span v-if="dirtyKeys.has(pair.sectionKey)" class="text-amber-700 font-medium"> · edited</span>
+                <span v-else-if="changedKeys.has(pair.sectionKey)" class="text-emerald-700"> · regenerated</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              class="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 shrink-0"
+              :disabled="regenerating || !canRegenerate(pair)"
+              @click.stop="regenerateOne(pair)"
+            >
+              {{ regeneratingKey === pair.sectionKey ? 'Updating…' : 'Regenerate section' }}
+            </button>
           </div>
+
           <textarea
-            v-if="pair.module"
             v-model="drafts[pair.sectionKey]"
             rows="8"
             class="w-full border border-gray-200 rounded p-2 font-mono text-xs leading-relaxed focus:ring-1 focus:ring-[#08AAC7] bg-white"
-            :readonly="!isAdmin"
+            placeholder="Write the prompt instructions for this report section…"
             @click.stop
+            @input="onDraftEdit(pair.sectionKey)"
             @focus="selectSection(pair.sectionKey, 'prompt')"
           />
-          <pre
-            v-else
-            class="whitespace-pre-wrap font-mono text-xs text-gray-600"
-          >No module linked for this section.</pre>
+          <p v-if="!pair.module" class="text-[11px] text-amber-700 mt-1">
+            No saved module yet — regenerating will still use the text above for this section only.
+          </p>
         </section>
       </div>
 
-      <!-- RIGHT: whole generated report -->
-      <div
-        ref="reportPane"
-        class="overflow-y-auto p-4 space-y-6 bg-white"
-      >
+      <!-- RIGHT: full report -->
+      <div class="overflow-y-auto p-4 space-y-6 bg-white">
         <header class="border-b border-gray-100 pb-3 mb-2">
           <h2 class="text-lg font-semibold text-gray-900">{{ reportTitle }}</h2>
           <p class="text-sm text-gray-500">
@@ -110,24 +114,43 @@
           class="rounded-lg border p-4 transition-colors cursor-pointer"
           :class="selectedKey === pair.sectionKey
             ? 'border-[#08AAC7] bg-[#08AAC7]/10 ring-1 ring-[#08AAC7]/40'
-            : 'border-transparent hover:border-gray-200'"
+            : dirtyKeys.has(pair.sectionKey)
+              ? 'border-amber-200 bg-amber-50/30'
+              : 'border-transparent hover:border-gray-200'"
           @click="selectSection(pair.sectionKey, 'report')"
         >
           <div class="flex items-start justify-between gap-2 mb-2">
-            <h3 class="text-base font-semibold text-gray-900">{{ pair.reportTitle }}</h3>
-            <span
-              v-if="changedKeys.has(pair.sectionKey)"
-              class="text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 shrink-0"
-            >Updated</span>
+            <div>
+              <h3 class="text-base font-semibold text-gray-900">{{ pair.reportTitle }}</h3>
+              <p v-if="pair.trace" class="text-[11px] text-gray-500">
+                From {{ pair.trace.prompt_module_name || 'prompt' }}
+                <span v-if="pair.trace.prompt_module_version">· v{{ pair.trace.prompt_module_version }}</span>
+              </p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <span
+                v-if="dirtyKeys.has(pair.sectionKey)"
+                class="text-[11px] px-2 py-0.5 rounded bg-amber-100 text-amber-800"
+              >Prompt edited</span>
+              <span
+                v-if="changedKeys.has(pair.sectionKey)"
+                class="text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800"
+              >Updated</span>
+              <button
+                type="button"
+                class="text-xs px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
+                :disabled="regenerating || !canRegenerate(pair)"
+                @click.stop="regenerateOne(pair)"
+              >
+                {{ regeneratingKey === pair.sectionKey ? 'Updating…' : 'Regen' }}
+              </button>
+            </div>
           </div>
-          <p v-if="pair.trace" class="text-[11px] text-gray-500 mb-2">
-            Produced by {{ pair.trace.prompt_module_name || 'prompt' }}
-            <span v-if="pair.trace.prompt_module_version">· v{{ pair.trace.prompt_module_version }}</span>
-            <span v-if="pair.trace.ai_model">· {{ pair.trace.ai_model }}</span>
-          </p>
           <div class="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
             <template v-if="pair.missing">
-              <span class="text-amber-700">This section was requested but not returned by the AI. Select it and click Update selected section.</span>
+              <span class="text-amber-700">
+                This section is missing. Edit the prompt on the left, then click Regenerate section.
+              </span>
             </template>
             <template v-else>
               {{ pair.reportNarrative || 'No content.' }}
@@ -172,13 +195,13 @@ const report = ref(null)
 const modules = ref([])
 const selectedKey = ref('')
 const drafts = reactive({})
-const staleKeys = ref(new Set())
+const baselines = reactive({})
+const dirtyKeys = ref(new Set())
 const changedKeys = ref(new Set())
-const saving = ref(false)
 const regenerating = ref(false)
+const regeneratingKey = ref('')
+const regeneratingLabel = ref('')
 const statusMessage = ref('')
-const promptPane = ref(null)
-const reportPane = ref(null)
 
 const masterPrompt = computed(
   () => report.value?.user_prompt || report.value?.metadata?.user_prompt || '',
@@ -246,7 +269,6 @@ const pairedRows = computed(() => {
     if (!orderedKeys.includes(key)) orderedKeys.push(key)
   }
 
-  // If nothing expected, fall back to generated order
   const keys = orderedKeys.length ? orderedKeys : [...generatedByKey.keys()]
 
   return keys.map((sectionKey) => {
@@ -272,10 +294,31 @@ const selectedPair = computed(() => {
   return pairedRows.value.find((p) => p.sectionKey === selectedKey.value) || null
 })
 
+function markDirty(sectionKey) {
+  const current = drafts[sectionKey] ?? ''
+  const baseline = baselines[sectionKey] ?? ''
+  const next = new Set(dirtyKeys.value)
+  if (current.trim() !== baseline.trim()) next.add(sectionKey)
+  else next.delete(sectionKey)
+  dirtyKeys.value = next
+}
+
+function onDraftEdit(sectionKey) {
+  markDirty(sectionKey)
+}
+
+function canRegenerate(pair) {
+  return Boolean(pair?.sectionKey && (drafts[pair.sectionKey] || '').trim())
+}
+
 function syncDrafts() {
   for (const pair of pairedRows.value) {
-    if (pair.module && drafts[pair.sectionKey] === undefined) {
-      drafts[pair.sectionKey] = pair.module.prompt_text || ''
+    if (drafts[pair.sectionKey] === undefined) {
+      const text = pair.module?.prompt_text || ''
+      drafts[pair.sectionKey] = text
+      baselines[pair.sectionKey] = text
+    } else if (baselines[pair.sectionKey] === undefined) {
+      baselines[pair.sectionKey] = pair.module?.prompt_text || drafts[pair.sectionKey] || ''
     }
   }
   if (!selectedKey.value && pairedRows.value.length) {
@@ -287,10 +330,7 @@ async function selectSection(key, origin) {
   selectedKey.value = key
   await nextTick()
   const otherId = origin === 'prompt' ? `report-${key}` : `prompt-${key}`
-  const el = document.getElementById(otherId)
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }
+  document.getElementById(otherId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
 }
 
 async function loadModules() {
@@ -316,60 +356,76 @@ async function loadReport() {
   }
 }
 
-async function saveSelected() {
-  const pair = selectedPair.value
-  if (!pair?.module || !isAdmin.value) return
-  saving.value = true
-  statusMessage.value = ''
+async function persistModuleIfPossible(pair) {
+  if (!pair.module || !isAdmin.value) return null
   try {
     const resp = await api.updatePromptModule(pair.module.id, {
       prompt_text: drafts[pair.sectionKey],
-      change_comment: `Edited ${pair.promptTitle} in split view`,
+      change_comment: `Edited ${pair.promptTitle} before section regeneration`,
     })
     const updated = resp.data?.prompt_module
-    modules.value = modules.value.map((m) => (m.id === updated.id ? updated : m))
-    drafts[pair.sectionKey] = updated.prompt_text
-    staleKeys.value = new Set([...staleKeys.value, pair.sectionKey])
-    statusMessage.value = `Saved full prompt section “${pair.promptTitle}” (v${updated.version_current}). Click Update selected section to refresh the report.`
+    if (updated) {
+      modules.value = modules.value.map((m) => (m.id === updated.id ? updated : m))
+      baselines[pair.sectionKey] = updated.prompt_text
+      drafts[pair.sectionKey] = updated.prompt_text
+    }
+    return updated
   } catch {
-    statusMessage.value = 'Save failed — administrator access required.'
-  } finally {
-    saving.value = false
+    // Non-fatal: regeneration can still use the draft prompt text
+    return null
   }
 }
 
-async function regenerateSelected() {
-  const pair = selectedPair.value
-  if (!pair) return
+async function regenerateOne(pair) {
+  if (!pair?.sectionKey || regenerating.value) return
   regenerating.value = true
-  statusMessage.value = ''
+  regeneratingKey.value = pair.sectionKey
+  regeneratingLabel.value = pair.reportTitle
+  statusMessage.value = `Regenerating “${pair.reportTitle}” only…`
   try {
-    if (pair.module && isAdmin.value && drafts[pair.sectionKey] !== pair.module.prompt_text) {
-      await saveSelected()
-    }
+    await persistModuleIfPossible(pair)
     await api.regenerateReportSection(props.reportId, pair.sectionKey, {
-      reason: 'full-pane section refinement',
-      prompt: drafts[pair.sectionKey] || undefined,
+      reason: 'edited prompt section regeneration',
+      prompt: drafts[pair.sectionKey],
     })
     await loadReport()
+    baselines[pair.sectionKey] = drafts[pair.sectionKey]
+    const dirty = new Set(dirtyKeys.value)
+    dirty.delete(pair.sectionKey)
+    dirtyKeys.value = dirty
     changedKeys.value = new Set([...changedKeys.value, pair.sectionKey])
-    const next = new Set(staleKeys.value)
-    next.delete(pair.sectionKey)
-    staleKeys.value = next
     selectedKey.value = pair.sectionKey
-    statusMessage.value = `Updated report section “${pair.reportTitle}”.`
+    statusMessage.value = `Updated only “${pair.reportTitle}”. Other sections were left unchanged.`
     emit('updated', pair.sectionKey)
   } catch (err) {
-    statusMessage.value = err?.response?.data?.error || 'Section update failed.'
+    statusMessage.value = err?.response?.data?.error || 'Section regeneration failed.'
   } finally {
     regenerating.value = false
+    regeneratingKey.value = ''
+    regeneratingLabel.value = ''
   }
+}
+
+async function regenerateChangedOnly() {
+  const keys = [...dirtyKeys.value]
+  if (!keys.length) {
+    statusMessage.value = 'No edited prompts to regenerate.'
+    return
+  }
+  for (const key of keys) {
+    const pair = pairedRows.value.find((p) => p.sectionKey === key)
+    if (pair) await regenerateOne(pair)
+  }
+  statusMessage.value = `Finished regenerating ${keys.length} edited section(s).`
 }
 
 watch(
   () => props.reportId,
   async () => {
     Object.keys(drafts).forEach((k) => delete drafts[k])
+    Object.keys(baselines).forEach((k) => delete baselines[k])
+    dirtyKeys.value = new Set()
+    changedKeys.value = new Set()
     await loadReport()
   },
 )

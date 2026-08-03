@@ -137,8 +137,9 @@ def regenerate_report_section_view(request, report_id, section_key):
     section_key = str(section_key).strip()
     module = get_prompt_module_for_section(section_key)
     body = request.data if isinstance(getattr(request, 'data', None), dict) else {}
+    edited_prompt = (body.get('prompt') or '').strip()
     user_prompt = (
-        body.get('prompt')
+        edited_prompt
         or (module.prompt_text if module else None)
         or report.get('user_prompt')
         or (report.get('metadata') or {}).get('user_prompt')
@@ -160,6 +161,8 @@ def regenerate_report_section_view(request, report_id, section_key):
         'data_summary': build_data_summary(original_json),
         'user_prompt': user_prompt,
         'report_options': report_options,
+        # Force the edited text as the section instruction (not the old DB module).
+        'section_prompt_overrides': {section_key: edited_prompt} if edited_prompt else {},
     })
 
     if not analysis_result or not analysis_result.get('success'):
