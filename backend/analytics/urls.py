@@ -33,6 +33,18 @@ from .api.reports import (
     preview_cleanup,
     list_manageable_reports,
     bulk_report_action,
+    report_section_mappings_view,
+    regenerate_report_section_view,
+)
+from .api.prompt_modules import (
+    list_prompt_modules_view,
+    create_prompt_module_view,
+    prompt_module_detail_view,
+    update_prompt_module_view,
+    prompt_module_versions_view,
+    compare_prompt_module_versions_view,
+    restore_prompt_module_version_view,
+    duplicate_prompt_module_view,
 )
 from .api.system import (
     SystemHealthView,
@@ -90,6 +102,20 @@ urlpatterns = [
     path('analysis-prompts/', get_analysis_prompts),
     path('analysis-prompts/update/', update_analysis_prompt_view),
     path('analysis-prompts/reset/', reset_analysis_prompts_view),
+    # Prompt Intelligence — Overleaf-style source/output pairing
+    path('prompt-modules/', list_prompt_modules_view),
+    path('prompt-modules/create/', create_prompt_module_view),
+    path('prompt-modules/<int:module_id>/', prompt_module_detail_view),
+    path('prompt-modules/<int:module_id>/update/', update_prompt_module_view),
+    path('prompt-modules/<int:module_id>/versions/', prompt_module_versions_view),
+    path('prompt-modules/<int:module_id>/versions/compare/', compare_prompt_module_versions_view),
+    path('prompt-modules/<int:module_id>/restore/', restore_prompt_module_version_view),
+    path('prompt-modules/<int:module_id>/duplicate/', duplicate_prompt_module_view),
+    path('simple-reports/<uuid:report_id>/section-mappings/', report_section_mappings_view),
+    path(
+        'simple-reports/<uuid:report_id>/sections/<str:section_key>/regenerate/',
+        regenerate_report_section_view,
+    ),
     # User settings (per-user persisted preferences)
     path('user-settings/', get_user_settings),
     path('user-settings/update/', update_user_settings),

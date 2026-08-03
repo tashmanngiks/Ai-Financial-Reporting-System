@@ -115,6 +115,7 @@ const navigationItems: NavigationItem[] = [
 const isActiveRoute = (to: string) => {
   if (route.path === to) return true
   if (to === '/dashboard' && route.path === '/') return true
+  if (to !== '/' && route.path.startsWith(`${to}/`)) return true
   return false
 }
 

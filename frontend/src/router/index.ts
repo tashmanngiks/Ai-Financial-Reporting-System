@@ -45,6 +45,11 @@ const router = createRouter({
       component: () => import('../views/PromptEditorView.vue'),
     },
     {
+      path: '/prompt-studio/:reportId?',
+      name: 'PromptStudio',
+      component: () => import('../views/PromptStudioView.vue'),
+    },
+    {
       path: '/login',
       name: 'Login',
       component: () => import('../views/LoginView.vue'),

@@ -9,7 +9,9 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from ..services.report_store import get_report, save_report
+from ..services.report_store import get_report, save_report, update_report
+from django.conf import settings
+from ..services.prompt_module_store import apply_section_traceability
 from ..services.analysis_prompt_defaults import (
     FINANCIAL_INSTRUMENTS_ANALYSIS_ID,
     MONEY_MARKET_ANALYSIS_ID,
@@ -258,14 +260,35 @@ def simple_upload_view(request):
         if not prompt:
             return JsonResponse({'error': 'Selected dataset analysis prompt is unavailable.'}, status=500)
 
+        # Prefer sections from the upload UI; otherwise use the dataset template sections.
+        client_sections = report_options.get('sections') or report_options.get('include_sections') or []
+        if isinstance(client_sections, str):
+            client_sections = [client_sections]
+        client_sections = [str(s).strip() for s in client_sections if str(s).strip()]
+
         resolved_report_options = {
-            'template': dataset_rule['template'],
-            'sections': [],
-            'include_sections': [],
-            'exclude_sections': [],
-            'length': request.POST.get('length') or body.get('length') or 'standard',
-            'detail_level': request.POST.get('detail_level') or body.get('detail_level') or 'balanced',
-            'output_format': request.POST.get('output_format') or body.get('output_format') or 'json',
+            'template': report_options.get('template') or dataset_rule['template'],
+            'sections': client_sections,
+            'include_sections': report_options.get('include_sections') or client_sections,
+            'exclude_sections': report_options.get('exclude_sections') or [],
+            'length': (
+                request.POST.get('length')
+                or body.get('length')
+                or report_options.get('length')
+                or 'standard'
+            ),
+            'detail_level': (
+                request.POST.get('detail_level')
+                or body.get('detail_level')
+                or report_options.get('detail_level')
+                or 'balanced'
+            ),
+            'output_format': (
+                request.POST.get('output_format')
+                or body.get('output_format')
+                or report_options.get('output_format')
+                or 'json'
+            ),
             'dataset_type': selected_dataset_type,
         }
 
@@ -279,6 +302,12 @@ def simple_upload_view(request):
             ai_analysis,
             report_options=resolved_report_options,
         )
+        # Capture fully resolved sections (after template/length normalization) for the UI.
+        try:
+            from ..services.report_prompt_registry import get_report_prompt_registry
+            resolved_report_options = get_report_prompt_registry().build_report_options(resolved_report_options)
+        except Exception:
+            pass
         comprehensive_generated = len(full_ai_analysis) > 0 and ai_enhanced
 
         prompt_title = dataset_rule['label']
@@ -303,6 +332,7 @@ def simple_upload_view(request):
             'ai_analysis': ai_analysis,
             'comprehensive_analysis': full_ai_analysis,
             'ai_enhanced': ai_enhanced,
+            'report_options': resolved_report_options,
             'metadata': {
                 'title': prompt_title,
                 'report_date': current_time,
@@ -316,6 +346,7 @@ def simple_upload_view(request):
                 'detected_dataset_type': detected_dataset_type or selected_dataset_type,
                 'original_json': original_json,
                 'normalized_json': normalized_json,
+                'report_options': resolved_report_options,
             },
         }
 
@@ -323,6 +354,21 @@ def simple_upload_view(request):
             report_data['ai_error'] = ai_error_msg
 
         save_report(report_id, report_data, request=request)
+
+        if full_ai_analysis:
+            try:
+                annotated = apply_section_traceability(
+                    report_id,
+                    full_ai_analysis,
+                    report_options=resolved_report_options,
+                    ai_model=getattr(settings, 'OPENAI_MODEL', 'gpt-4o-mini') if ai_enhanced else 'fallback',
+                    confidence_score=0.85 if ai_enhanced else 0.5,
+                    regeneration_reason='initial generation',
+                )
+                report_data['comprehensive_analysis'] = annotated
+                update_report(report_id, {'comprehensive_analysis': annotated}, request=request)
+            except Exception as exc:
+                print(f'DEBUG: section traceability skipped: {exc}')
 
         response_data = {
             'success': True,

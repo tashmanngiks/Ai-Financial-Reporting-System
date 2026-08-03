@@ -256,3 +256,88 @@ class ReportConfiguration(models.Model):
 
     def __str__(self):
         return 'Report configuration'
+
+
+class PromptModule(models.Model):
+    """Independent prompt module mapped to one or more report sections."""
+
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('draft', 'Draft'),
+        ('archived', 'Archived'),
+    ]
+
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255, unique=True)
+    description = models.TextField(blank=True)
+    category = models.CharField(max_length=100, blank=True, default='Custom')
+    prompt_text = models.TextField()
+    order_index = models.PositiveIntegerField(default=0)
+    version_current = models.PositiveIntegerField(default=1)
+    tags = models.JSONField(blank=True, default=list)
+    related_sections = models.JSONField(blank=True, default=list)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    ai_settings = models.JSONField(blank=True, default=dict)
+    is_favorite = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_prompt_modules'
+    )
+    updated_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='updated_prompt_modules'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order_index', 'name']
+
+    def __str__(self):
+        return f'{self.name} (v{self.version_current})'
+
+
+class PromptModuleVersion(models.Model):
+    """Immutable snapshot created on every prompt module edit."""
+
+    prompt_module = models.ForeignKey(PromptModule, on_delete=models.CASCADE, related_name='versions')
+    version_number = models.PositiveIntegerField()
+    prompt_text = models.TextField()
+    change_comment = models.TextField(blank=True, default='')
+    ai_settings_snapshot = models.JSONField(blank=True, default=dict)
+    tags_snapshot = models.JSONField(blank=True, default=list)
+    status_snapshot = models.CharField(max_length=20, default='active')
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='prompt_module_versions_created'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-version_number', '-created_at']
+        unique_together = [('prompt_module', 'version_number')]
+
+    def __str__(self):
+        return f'{self.prompt_module.slug} v{self.version_number}'
+
+
+class ReportSectionMapping(models.Model):
+    """Permanent link between a report section and the prompt module that produced it."""
+
+    report = models.ForeignKey(PersistedReport, on_delete=models.CASCADE, related_name='section_mappings')
+    section_key = models.CharField(max_length=100)
+    section_title = models.CharField(max_length=255)
+    prompt_module = models.ForeignKey(PromptModule, on_delete=models.SET_NULL, null=True, blank=True)
+    prompt_module_version = models.ForeignKey(PromptModuleVersion, on_delete=models.SET_NULL, null=True, blank=True)
+    ai_model = models.CharField(max_length=100, blank=True, default='')
+    generation_timestamp = models.DateTimeField(auto_now_add=True)
+    confidence_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    generation_run_id = models.CharField(max_length=64, blank=True, default='')
+    section_content = models.JSONField(blank=True, default=dict)
+    section_hash = models.CharField(max_length=128, blank=True, default='')
+    content_hash = models.CharField(max_length=128, blank=True, default='')
+    regeneration_reason = models.CharField(max_length=255, blank=True, default='')
+
+    class Meta:
+        ordering = ['section_key', '-generation_timestamp']
+        unique_together = [('report', 'section_key')]
+
+    def __str__(self):
+        return f'{self.report_id}:{self.section_key}'

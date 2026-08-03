@@ -389,19 +389,34 @@ class ReportPromptRegistry:
             excluded = set(exclude_sections)
             resolved = [section for section in resolved if section not in excluded]
 
-        if length == "short":
-            short_sections = ["executive_summary", "statistical_highlights", "recommendations"]
-            resolved = [section for section in resolved if section in short_sections]
-        elif length == "standard":
-            standard_sections = [
-                "executive_summary",
-                "statistical_highlights",
-                "financial_ratios",
-                "trend_analysis",
-                "risk_assessment",
-                "recommendations",
-            ]
-            resolved = [section for section in resolved if section in standard_sections]
+        # Do not strip dataset/template-specific sections (WACC, money market, etc.).
+        # Length trimming only applies to generic custom/summary templates.
+        named_templates = {
+            "wacc_report",
+            "money_market_report",
+            "financial_instruments_report",
+            "comprehensive_multi_page",
+            "three_page_standard",
+        }
+        if (template_name or "custom") not in named_templates:
+            if length == "short":
+                short_sections = ["executive_summary", "statistical_highlights", "recommendations"]
+                resolved = [section for section in resolved if section in short_sections]
+            elif length == "standard":
+                standard_sections = [
+                    "executive_summary",
+                    "statistical_highlights",
+                    "financial_ratios",
+                    "trend_analysis",
+                    "market_trends",
+                    "risk_assessment",
+                    "benchmark_comparison",
+                    "recommendations",
+                    "wacc_analysis",
+                    "money_market_analysis",
+                    "investment_analysis",
+                ]
+                resolved = [section for section in resolved if section in standard_sections]
 
         if not resolved:
             resolved = ["executive_summary", "statistical_highlights", "recommendations"]
@@ -510,6 +525,20 @@ class ReportPromptRegistry:
         data_period = report_context.get("data_period", "Unknown Period")
         section_title = self.get_section_definition(section_key).get("title", section_key.replace("_", " ").title())
         available_data = ", ".join(report_context.get("available_data_sections", []) or ["unknown"])
+
+        try:
+            from .prompt_module_store import get_section_prompt_text
+
+            module_prompt = get_section_prompt_text(section_key, report_context)
+            if module_prompt:
+                if section_key != "executive_summary" and "bullet" not in module_prompt.lower():
+                    module_prompt += (
+                        " Write this section as professional prose and avoid bullet points "
+                        "unless they are required for a table-like list of data points."
+                    )
+                return module_prompt
+        except Exception:
+            pass
 
         prompt_map = {
             "executive_summary": (

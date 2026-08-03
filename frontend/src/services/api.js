@@ -133,6 +133,46 @@ export const api = {
     })
   },
 
+  getPromptModules(params = {}) {
+    return apiClient.get('/prompt-modules/', { params })
+  },
+
+  getPromptModule(id) {
+    return apiClient.get(`/prompt-modules/${id}/`)
+  },
+
+  updatePromptModule(id, payload) {
+    return apiClient.post(`/prompt-modules/${id}/update/`, payload)
+  },
+
+  getPromptModuleVersions(id) {
+    return apiClient.get(`/prompt-modules/${id}/versions/`)
+  },
+
+  comparePromptModuleVersions(id, fromVersion, toVersion) {
+    return apiClient.get(`/prompt-modules/${id}/versions/compare/`, {
+      params: { from: fromVersion, to: toVersion },
+    })
+  },
+
+  restorePromptModuleVersion(id, versionNumber) {
+    return apiClient.post(`/prompt-modules/${id}/restore/`, {
+      version_number: versionNumber,
+    })
+  },
+
+  regenerateReportSection(reportId, sectionKey, payload = {}) {
+    return apiClient.post(
+      `/simple-reports/${reportId}/sections/${encodeURIComponent(sectionKey)}/regenerate/`,
+      payload,
+      { timeout: 180000 },
+    )
+  },
+
+  getReportSectionMappings(reportId) {
+    return apiClient.get(`/simple-reports/${reportId}/section-mappings/`)
+  },
+
   // Per-user settings
   getUserSettings() {
     return apiClient.get('/user-settings/')

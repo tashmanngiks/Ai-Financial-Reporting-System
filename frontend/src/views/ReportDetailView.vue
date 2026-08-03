@@ -5,7 +5,7 @@
       <p class="text-gray-500">Loading report...</p>
     </div>
 
-    <div v-else-if="report" class="space-y-6 max-w-5xl mx-auto">
+    <div v-else-if="report" class="space-y-6 max-w-7xl mx-auto">
       <!-- Header -->
       <div class="card">
         <div class="card-header">
@@ -119,54 +119,13 @@
         </div>
       </div>
 
-      <!-- AI sections (prompt response only) -->
-      <template v-if="displaySections.length">
-        <div
-          v-for="(section, index) in displaySections"
-          :key="`${section.title}-${index}`"
-          class="card"
-        >
-          <div class="card-header">
-            <h2 class="text-lg font-medium text-gray-900">{{ section.title }}</h2>
-          </div>
-          <div class="card-body space-y-4">
-            <div v-if="sectionContent(section)" class="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">
-              <p>{{ sectionContent(section) }}</p>
-            </div>
-
-            <div v-if="sectionKeyPoints(section).length">
-              <h3 class="text-sm font-semibold text-gray-900 mb-2">Key points</h3>
-              <ul class="list-disc list-inside space-y-1 text-sm text-gray-600">
-                <li v-for="(point, i) in sectionKeyPoints(section)" :key="i">{{ point }}</li>
-              </ul>
-            </div>
-
-            <div v-if="sectionRiskFactors(section).length">
-              <h3 class="text-sm font-semibold text-gray-900 mb-2">Risk factors</h3>
-              <div class="space-y-2">
-                <div
-                  v-for="risk in sectionRiskFactors(section)"
-                  :key="risk.risk"
-                  class="p-3 bg-red-50 rounded-lg border border-red-100 text-sm"
-                >
-                  <div class="flex justify-between gap-2">
-                    <span class="font-medium text-red-900">{{ risk.risk }}</span>
-                    <span class="text-red-700">{{ risk.level }}</span>
-                  </div>
-                  <p v-if="risk.mitigation" class="text-red-700 mt-1">{{ risk.mitigation }}</p>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="sectionRecommendations(section).length">
-              <h3 class="text-sm font-semibold text-gray-900 mb-2">Recommendations</h3>
-              <ul class="list-disc list-inside space-y-1 text-sm text-gray-600">
-                <li v-for="(rec, i) in sectionRecommendations(section)" :key="i">{{ formatRecommendation(rec) }}</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </template>
+      <!-- Overleaf-style prompt ↔ report pairs -->
+      <div v-if="displaySections.length" class="space-y-3">
+        <p class="text-sm text-gray-600">
+          Click a report section to highlight its prompt. Edit the left side, then Update section.
+        </p>
+        <PromptReportSplitPane :report-id="reportId" />
+      </div>
 
       <div v-else-if="!report.ai_error" class="card">
         <div class="card-body text-center py-8">
@@ -192,6 +151,7 @@ import { useRoute } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { getShortReportLabel } from '@/utils/reportDisplay'
 import { ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
+import PromptReportSplitPane from '@/components/PromptReportSplitPane.vue'
 
 const route = useRoute()
 const analyticsStore = useAnalyticsStore()
@@ -234,37 +194,6 @@ const isQuotaError = computed(() => {
   const err = report.value?.ai_error || ''
   return /quota|billing/i.test(err)
 })
-
-function sectionContent(section: { content?: unknown }) {
-  const c = section.content
-  if (!c) return ''
-  if (typeof c === 'string') return c
-  if (typeof c === 'object' && c !== null && 'content' in c) {
-    return String((c as { content?: string }).content || '')
-  }
-  return ''
-}
-
-function sectionKeyPoints(section: { content?: { key_points?: string[] } }) {
-  return section.content?.key_points || []
-}
-
-function sectionRiskFactors(section: { content?: { risk_factors?: Array<{ risk: string; level: string; mitigation?: string }> } }) {
-  return section.content?.risk_factors || []
-}
-
-function sectionRecommendations(section: { content?: { recommendations?: unknown[] } }) {
-  return section.content?.recommendations || []
-}
-
-function formatRecommendation(rec: unknown) {
-  if (typeof rec === 'string') return rec
-  if (rec && typeof rec === 'object' && 'action' in rec) {
-    const r = rec as { area?: string; action?: string }
-    return r.area ? `${r.area}: ${r.action}` : String(r.action)
-  }
-  return String(rec)
-}
 
 function sectionLabel(sectionKey: string) {
   return sectionKey

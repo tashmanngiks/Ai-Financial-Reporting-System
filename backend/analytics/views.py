@@ -2218,6 +2218,8 @@ def generate_comprehensive_ai_analysis(context):
         data_summary_json = serialize_json_for_ai(context.get('data_summary', {}), max_chars=4000)
         user_prompt = context.get('user_prompt', 'comprehensive analysis')
         report_options = registry.build_report_options(context.get('report_options') or {})
+        # Persist resolved section list back so callers/UI know the full intended report.
+        context['report_options'] = report_options
         report_context = build_report_context(context.get('financial_data', {}))
         report_context.update({
             'bank_name': context.get('bank_name', 'Financial Dataset'),
@@ -2243,10 +2245,16 @@ def generate_comprehensive_ai_analysis(context):
             + "\n".join(
                 f"- {item['section']}: {item['instruction']}" for item in section_prompts
             )
-            + "\n\nReturn ONLY valid JSON with this shape:\n"
+            + "\n\nCRITICAL: You MUST return one JSON object for EVERY section listed above. "
+            + f"Required section keys ({len(section_prompts)}): "
+            + ", ".join(item['section'] for item in section_prompts)
+            + ".\n"
+            + "Do not omit sections. Do not merge sections. Each section needs its own array item.\n\n"
+            "Return ONLY valid JSON with this shape:\n"
             '{\n'
             '  "sections": [\n'
             '    {\n'
+            '      "section_key": "exact_section_key_from_list",\n'
             '      "title": "Section title",\n'
             '      "content": {\n'
             '        "content": "Detailed narrative analysis",\n'

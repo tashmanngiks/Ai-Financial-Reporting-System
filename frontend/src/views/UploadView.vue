@@ -1,5 +1,42 @@
 <template>
   <div class="p-6">
+    <!-- After generate: Overleaf-style prompt ↔ report split (stays on Upload) -->
+    <div v-if="analyticsStore.uploadStatus === 'completed' && analyticsStore.currentReport" class="space-y-4">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900">Report ready — refine prompts beside each section</h2>
+          <p class="text-sm text-gray-600 mt-1">
+            Click a report section to highlight its prompt. Edit the left side, then Update section.
+          </p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <a
+            :href="`/api/media/${analyticsStore.currentReport}/print/`"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-secondary text-sm"
+          >Export PDF</a>
+          <router-link
+            :to="`/reports/${analyticsStore.currentReport}`"
+            class="btn btn-secondary text-sm"
+          >Open in Reports</router-link>
+          <button
+            type="button"
+            class="btn btn-primary text-sm"
+            @click="startNewUpload"
+          >New upload</button>
+        </div>
+      </div>
+
+      <div v-if="analyticsStore.errors.upload" class="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900">
+        {{ analyticsStore.errors.upload }}
+      </div>
+
+      <PromptReportSplitPane :report-id="String(analyticsStore.currentReport)" />
+    </div>
+
+    <!-- Upload form (hidden after successful generation) -->
+    <template v-else>
     <!-- World-Class Header -->
     <div class="mb-10">
       <div class="bg-gradient-to-r from-[#08AAC7] to-[#0691A8] rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
@@ -551,50 +588,10 @@
         </div>
       </div>
 
-      <!-- Upload Success -->
-      <div v-if="analyticsStore.uploadStatus === 'completed'" class="relative bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-xl border border-gray-100 overflow-hidden hover:shadow-2xl transition-all duration-300">
-        <div class="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4 border-b border-green-700">
-          <div class="flex items-center space-x-3">
-            <div class="bg-white/20 backdrop-blur-sm rounded-lg p-2">
-              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-            </div>
-            <div>
-              <h3 class="text-lg font-bold text-white">Analysis Complete!</h3>
-              <p class="text-green-100 text-sm">Your financial report has been generated successfully</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="p-6">
-          <div class="flex items-center mb-6">
-            <div class="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 mr-4">
-              <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-            </div>
-            <div>
-              <h3 class="text-xl font-bold text-gray-900">Success!</h3>
-              <p class="text-gray-600">
-                {{ analyticsStore.errors.upload ? 'File saved, but AI analysis needs attention.' : 'Your financial report is ready for review' }}
-              </p>
-            </div>
-          </div>
-          <div v-if="analyticsStore.errors.upload" class="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900">
-            {{ analyticsStore.errors.upload }}
-          </div>
-          <div class="mt-4">
-            <router-link
-              :to="`/reports/${analyticsStore.currentReport}`"
-              class="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
-            >
-              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-              </svg>
-              View Report
-            </router-link>
-          </div>
+      <!-- Upload Success (fallback if no report id) -->
+      <div v-if="analyticsStore.uploadStatus === 'completed' && !analyticsStore.currentReport" class="relative bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+        <div class="p-6 text-sm text-gray-600">
+          Analysis finished, but no report id was returned. Check Reports or try again.
         </div>
       </div>
 
@@ -615,17 +612,6 @@
         </div>
 
         <div class="p-6">
-          <div class="flex items-center mb-6">
-            <div class="bg-gradient-to-r from-red-500 to-orange-600 rounded-xl p-4 mr-4">
-              <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-              </svg>
-            </div>
-            <div>
-              <h3 class="text-xl font-bold text-gray-900">Upload Failed</h3>
-              <p class="text-gray-600">We couldn't process your file</p>
-            </div>
-          </div>
           <div class="mt-4 flex space-x-3">
             <button
               @click="analyticsStore.clearCurrentUpload(); syncPromptDraft()"
@@ -643,15 +629,16 @@
         </div>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/services/api'
+import PromptReportSplitPane from '@/components/PromptReportSplitPane.vue'
 
 type DatasetType = 'wacc' | 'money_market' | 'financial_instruments'
 
@@ -665,7 +652,6 @@ type AnalysisPromptRecord = {
   updated_by?: string | null
 }
 
-const router = useRouter()
 const analyticsStore = useAnalyticsStore()
 const authStore = useAuthStore()
 
@@ -959,19 +945,22 @@ const handleUpload = async () => {
       output_format: outputFormat.value,
     }
 
-    const data = await analyticsStore.uploadFile(
+    await analyticsStore.uploadFile(
       selectedFile.value,
       analysisPrompt.value,
       '',
       reportOptions,
     )
-    const id = data?.id || data?.report_id || analyticsStore.currentReport
-    if (id && analyticsStore.uploadStatus === 'completed') {
-      router.push(`/reports/${id}`)
-    }
+    // Stay on Upload — Overleaf split view appears when uploadStatus is completed
   } catch {
     // Error shown in upload status panel via analyticsStore.errors.upload
   }
+}
+
+const startNewUpload = () => {
+  analyticsStore.clearCurrentUpload()
+  selectedFile.value = null
+  syncPromptDraft()
 }
 
 // No mock data function - using real API endpoints only
