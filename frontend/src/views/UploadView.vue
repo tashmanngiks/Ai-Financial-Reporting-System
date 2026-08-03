@@ -250,7 +250,7 @@
               <div>
                 <h3 class="text-sm font-semibold text-gray-900">Dataset Analysis Prompt</h3>
                 <p class="text-xs text-gray-600 mt-1">
-                  The selected dataset automatically loads its master prompt for report generation.
+                  Selecting a dataset type loads its master prompt here automatically.
                 </p>
               </div>
             </div>
@@ -265,19 +265,74 @@
                   {{ selectedDatasetConfig.templateLabel }}
                 </div>
               </div>
-              <div class="flex flex-col gap-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p class="text-sm font-medium text-gray-900">Master prompt loaded</p>
-                  <p class="text-xs text-gray-600 mt-1">
-                    The report will use the saved prompt for {{ selectedDatasetConfig.label }}. You do not need to re-enter it here.
-                  </p>
+
+              <div class="space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p class="text-sm font-medium text-gray-900">Master prompt</p>
+                    <p class="text-xs text-gray-600 mt-1">
+                      Loaded for {{ selectedDatasetConfig.label }}.
+                      <span v-if="selectedPromptRecord?.updated_at">
+                        Last updated {{ formatPromptDate(selectedPromptRecord.updated_at) }}.
+                      </span>
+                    </p>
+                  </div>
+                  <span
+                    v-if="loadingPrompts"
+                    class="text-xs text-gray-500"
+                  >
+                    Loading…
+                  </span>
                 </div>
-                <router-link
-                  to="/prompt-editor"
-                  class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg bg-[#08AAC7] text-white hover:bg-[#0691A8] transition-colors duration-200"
+
+                <textarea
+                  v-model="promptDraft"
+                  rows="12"
+                  class="w-full border border-gray-300 rounded-lg p-3 font-mono text-sm leading-relaxed focus:ring-2 focus:ring-[#08AAC7] focus:border-[#08AAC7]"
+                  :readonly="!isAdmin"
+                  :placeholder="loadingPrompts ? 'Loading prompt…' : 'Dataset master prompt'"
+                />
+
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    v-if="isAdmin"
+                    type="button"
+                    class="btn btn-primary text-sm"
+                    :disabled="savingPrompt || !promptDraft.trim()"
+                    @click="savePrompt"
+                  >
+                    {{ savingPrompt ? 'Saving…' : 'Save Prompt' }}
+                  </button>
+                  <button
+                    v-if="isAdmin"
+                    type="button"
+                    class="btn btn-secondary text-sm"
+                    :disabled="savingPrompt"
+                    @click="cancelPromptEdits"
+                  >
+                    Discard
+                  </button>
+                  <button
+                    v-if="isAdmin"
+                    type="button"
+                    class="btn btn-secondary text-sm"
+                    :disabled="savingPrompt"
+                    @click="resetPrompt"
+                  >
+                    Reset to Default
+                  </button>
+                </div>
+
+                <p
+                  v-if="promptStatusMessage"
+                  class="text-xs"
+                  :class="promptStatusIsError ? 'text-red-600' : 'text-gray-600'"
                 >
-                  Open Prompt Editor
-                </router-link>
+                  {{ promptStatusMessage }}
+                </p>
+                <p v-if="!isAdmin" class="text-xs text-gray-500">
+                  Viewing only. Administrator access is required to save prompt changes.
+                </p>
               </div>
             </div>
 
