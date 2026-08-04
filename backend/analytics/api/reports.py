@@ -205,10 +205,32 @@ def regenerate_report_section_view(request, report_id, section_key):
         confidence_score=0.85,
         regeneration_reason=body.get('reason') or 'section regeneration',
     )
+
+    # Keep the report "Master Prompt" synchronized to the current per-section prompt modules.
+    try:
+        from ..services.prompt_module_store import compose_master_prompt
+
+        all_section_keys = (
+            (report.get('report_options') or {}).get('sections')
+            or (report.get('metadata') or {}).get('report_options', {}).get('sections')
+            or [section_key]
+        )
+        master_prompt = compose_master_prompt(
+            all_section_keys,
+            {'bank_name': bank_name, 'data_period': data_period},
+        )
+    except Exception:
+        master_prompt = report.get('user_prompt') or ''
+
+    new_metadata = dict(report.get('metadata') or {})
+    new_metadata['user_prompt'] = master_prompt
+
     update_report(str(report_id), {
         'comprehensive_analysis': annotated,
         'section_history': history,
         'ai_enhanced': True,
+        'user_prompt': master_prompt,
+        'metadata': new_metadata,
     }, request=request)
 
     regenerated = next((s for s in annotated if s.get('section_key') == section_key), annotated[-1] if annotated else new_section)

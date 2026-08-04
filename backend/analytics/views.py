@@ -189,7 +189,7 @@ def normalize_json_for_analysis(json_data):
     return {'value': json_data}, original
 
 
-def generate_analysis_from_prompt(prompt, json_data, ai_analysis, report_options=None):
+def generate_analysis_from_prompt(prompt, json_data, ai_analysis, report_options=None, section_prompt_overrides=None):
     """Generate comprehensive report sections from the user's prompt using AI only."""
     bank_name, data_period = extract_entity_metadata(json_data)
     normalized_data, _ = normalize_json_for_analysis(json_data)
@@ -203,6 +203,8 @@ def generate_analysis_from_prompt(prompt, json_data, ai_analysis, report_options
         'data_summary': build_data_summary(json_data),
         'user_prompt': prompt,
         'report_options': report_options or {},
+        # Optional: per-section instruction overrides (used for selective regen).
+        'section_prompt_overrides': section_prompt_overrides or {},
     }
 
     analysis_result = generate_comprehensive_ai_analysis(analysis_context)

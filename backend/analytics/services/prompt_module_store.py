@@ -586,6 +586,109 @@ def get_section_prompt_text(section_key: str, report_context: dict[str, Any] | N
     )
 
 
+def compose_master_prompt(
+    section_keys: list[str],
+    report_context: dict[str, Any] | None = None,
+) -> str:
+    """
+    Compose a deterministic master prompt document that contains every section
+    prompt wrapped in markers. The frontend decomposes this master prompt into
+    per-section editors and regenerates using only the edited section prompt.
+    """
+    report_context = report_context or {}
+    parts: list[str] = []
+    for key in section_keys or []:
+        section_key = str(key).strip()
+        if not section_key:
+            continue
+        prompt_text = get_section_prompt_text(section_key, report_context) or ''
+        parts.append(f"[SECTION:{section_key}]\n{prompt_text}\n[/SECTION]")
+    return "\n\n".join(parts)
+
+
+def decompose_master_prompt_to_section_prompts(
+    master_prompt: str | None,
+    section_keys: list[str] | None,
+) -> dict[str, str]:
+    """
+    Decompose a single master prompt into per-section prompt texts.
+
+    Strategy:
+    1) If the master prompt already contains `[SECTION:<key>]...[/SECTION]`
+       blocks, extract directly.
+    2) Otherwise, attempt a best-effort heading-based split by searching for
+       common section title variants and slicing until the next section match.
+    """
+    master_prompt = master_prompt or ''
+    keys = section_keys or []
+    if not master_prompt or not keys:
+        return {}
+
+    # 1) Marker-based extraction
+    extracted: dict[str, str] = {}
+    for key in keys:
+        section_key = str(key).strip()
+        if not section_key:
+            continue
+        re_marker = re.compile(
+            rf"\[SECTION:{re.escape(section_key)}\]([\s\S]*?)\[/SECTION\]",
+            flags=re.IGNORECASE,
+        )
+        m = re_marker.search(master_prompt)
+        if m:
+            val = (m.group(1) or '').strip()
+            if val:
+                extracted[section_key] = val
+
+    if extracted:
+        return extracted
+
+    # 2) Heading-based extraction (best effort)
+    title_variants: dict[str, list[str]] = {
+        'executive_summary': ['Executive Summary'],
+        'statistical_highlights': ['Statistical Highlights'],
+        'financial_ratios': ['Financial Ratios', 'Ratio Analysis'],
+        'wacc_analysis': ['WACC', 'Weighted Average Cost of Capital'],
+        'money_market_analysis': ['Money Market', 'Money Market Analysis'],
+        'investment_analysis': ['Financial Instruments', 'Investment Analysis'],
+        'macroeconomic_indicators': ['Macroeconomic Indicators', 'Macro Indicators'],
+        'country_risk_analysis': ['Country Risk', 'Sovereign Risk'],
+        'market_trends': ['Market Trends'],
+        'trend_analysis': ['Trend Analysis'],
+        'risk_assessment': ['Risk Analysis', 'Risk Assessment'],
+        'benchmark_comparison': ['Benchmark Comparison'],
+        'recommendations': ['Recommendations'],
+    }
+
+    key_matches: list[tuple[int, str]] = []
+    for key in keys:
+        section_key = str(key).strip()
+        if not section_key:
+            continue
+        variants = title_variants.get(section_key, []) or [section_key.replace('_', ' ').title()]
+        best_idx: int | None = None
+        for v in variants:
+            m = re.search(re.escape(v), master_prompt, flags=re.IGNORECASE)
+            if m:
+                idx = m.start()
+                if best_idx is None or idx < best_idx:
+                    best_idx = idx
+        if best_idx is not None:
+            key_matches.append((best_idx, section_key))
+
+    key_matches.sort(key=lambda x: x[0])
+    if not key_matches:
+        return {}
+
+    for i, (start_idx, section_key) in enumerate(key_matches):
+        end_idx = key_matches[i + 1][0] if i + 1 < len(key_matches) else len(master_prompt)
+        chunk = master_prompt[start_idx:end_idx].strip()
+        if chunk:
+            extracted[section_key] = chunk
+
+    return extracted
+
+
 def compare_prompt_versions(module: PromptModule, from_version: int, to_version: int) -> dict[str, Any]:
     left = module.versions.filter(version_number=from_version).first()
     right = module.versions.filter(version_number=to_version).first()

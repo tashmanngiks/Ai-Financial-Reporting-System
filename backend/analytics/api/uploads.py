@@ -256,8 +256,8 @@ def simple_upload_view(request):
 
         dataset_rule = DATASET_TYPE_RULES[selected_dataset_type]
         dataset_prompt = get_analysis_prompt(dataset_rule['prompt_id'])
-        prompt = (dataset_prompt.content if dataset_prompt else '').strip()
-        if not prompt:
+        analysis_request_prompt = (dataset_prompt.content if dataset_prompt else '').strip()
+        if not analysis_request_prompt:
             return JsonResponse({'error': 'Selected dataset analysis prompt is unavailable.'}, status=500)
 
         # Prefer sections from the upload UI; otherwise use the dataset template sections.
@@ -294,20 +294,89 @@ def simple_upload_view(request):
 
         report_id = str(uuid.uuid4())
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        # Resolve the final section list exactly the same way the AI does.
+        from ..services.report_prompt_registry import get_report_prompt_registry
+        resolved_report_options = get_report_prompt_registry().build_report_options(resolved_report_options)
+        section_keys = resolved_report_options.get('sections') or []
+
+        # Decompose the dataset prompt the user selected into per-section instruction blocks.
+        # The UI's left editors and regen behavior will be based on these exact blocks.
+        from ..services.prompt_module_store import decompose_master_prompt_to_section_prompts
+
+        section_prompt_overrides = decompose_master_prompt_to_section_prompts(
+            analysis_request_prompt,
+            section_keys,
+        )
+
+        # Safety fallback: if decomposition didn't find a block for a section,
+        # use the existing active prompt-module text so editors are never empty.
+        try:
+            from ..services.prompt_module_store import get_prompt_module_for_section
+
+            for section_key in section_keys or []:
+                section_key = str(section_key).strip()
+                if not section_key:
+                    continue
+                if (section_prompt_overrides.get(section_key) or '').strip():
+                    continue
+                module = get_prompt_module_for_section(section_key)
+                fallback_text = None
+                if module and (module.prompt_text or '').strip():
+                    fallback_text = (module.prompt_text or '').strip()
+                    fallback_text = (
+                        fallback_text.replace('{bank_name}', str(bank_name))
+                        .replace('{data_period}', str(data_period))
+                    )
+                if fallback_text:
+                    section_prompt_overrides[section_key] = fallback_text
+        except Exception:
+            pass
+
+        def _compose_master_prompt_from_section_prompts(keys: list[str], prompts: dict[str, str]) -> str:
+            parts: list[str] = []
+            for k in keys or []:
+                section_key = str(k).strip()
+                if not section_key:
+                    continue
+                parts.append(f"[SECTION:{section_key}]\n{(prompts.get(section_key) or '').strip()}\n[/SECTION]")
+            return "\n\n".join(parts)
+
+        master_prompt = _compose_master_prompt_from_section_prompts(section_keys, section_prompt_overrides) or analysis_request_prompt
+
+        # Best-effort: seed prompt modules so traceability aligns with the upload-selected prompt.
+        # This creates prompt module versions to keep history.
+        try:
+            from ..services.prompt_module_store import get_prompt_module_for_section, update_prompt_module
+
+            for section_key in section_keys or []:
+                prompt_text = (section_prompt_overrides.get(section_key) or '').strip()
+                if not prompt_text:
+                    continue
+                module = get_prompt_module_for_section(section_key)
+                if module and (module.prompt_text or '').strip() != prompt_text:
+                    payload: dict[str, Any] = {'prompt_text': prompt_text}
+                    if getattr(module, 'status', None) != 'active':
+                        payload['status'] = 'active'
+                    update_prompt_module(
+                        module,
+                        payload,
+                        user=request.user,
+                        change_comment=f'Seeded from dataset analysis prompt for {selected_dataset_type}',
+                    )
+        except Exception:
+            # Never fail report generation if prompt-module seeding fails.
+            pass
+
         ai_analysis = perform_initial_ai_analysis(json_data)
 
         full_ai_analysis, ai_error_msg, ai_enhanced = generate_analysis_from_prompt(
-            prompt,
+            analysis_request_prompt,
             original_json,
             ai_analysis,
             report_options=resolved_report_options,
+            section_prompt_overrides=section_prompt_overrides,
         )
-        # Capture fully resolved sections (after template/length normalization) for the UI.
-        try:
-            from ..services.report_prompt_registry import get_report_prompt_registry
-            resolved_report_options = get_report_prompt_registry().build_report_options(resolved_report_options)
-        except Exception:
-            pass
         comprehensive_generated = len(full_ai_analysis) > 0 and ai_enhanced
 
         prompt_title = dataset_rule['label']
@@ -317,7 +386,7 @@ def simple_upload_view(request):
             'filename': uploaded_file.name,
             'size': uploaded_file.size,
             'description': description,
-            'user_prompt': prompt,
+            'user_prompt': master_prompt,
             'dataset_type': selected_dataset_type,
             'detected_dataset_type': detected_dataset_type or selected_dataset_type,
             'task_id': report_id,
@@ -341,7 +410,7 @@ def simple_upload_view(request):
                 'ai_processed': comprehensive_generated,
                 'comprehensive_generated': comprehensive_generated,
                 'ai_enhanced': ai_enhanced,
-                'user_prompt': prompt,
+                'user_prompt': master_prompt,
                 'dataset_type': selected_dataset_type,
                 'detected_dataset_type': detected_dataset_type or selected_dataset_type,
                 'original_json': original_json,
