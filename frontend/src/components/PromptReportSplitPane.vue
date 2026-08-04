@@ -48,7 +48,13 @@
           <p class="text-[11px] text-gray-500 mb-2">
             Dataset-level context (section prompts below control each report block).
           </p>
-          <pre class="whitespace-pre-wrap font-mono text-xs text-gray-800 leading-relaxed max-h-48 overflow-y-auto">{{ masterPrompt || 'No master prompt stored.' }}</pre>
+          <textarea
+            class="w-full border border-gray-200 rounded p-2 font-mono text-xs leading-relaxed max-h-48 overflow-y-auto focus:ring-1 focus:ring-[#08AAC7] bg-white"
+            :readonly="!isAdmin"
+            v-model="masterEditor"
+            rows="8"
+            @click.stop
+          />
         </section>
 
         <section
@@ -176,7 +182,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/services/api'
@@ -203,9 +209,39 @@ const regeneratingKey = ref('')
 const regeneratingLabel = ref('')
 const statusMessage = ref('')
 
-const masterPrompt = computed(
-  () => report.value?.user_prompt || report.value?.metadata?.user_prompt || '',
-)
+const masterEditor = ref('')
+const syncingFromModules = ref(false)
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function parseMasterPromptForKeys(text: string, keys: string[]) {
+  const mapping: Record<string, string> = {}
+  const safeText = text || ''
+  for (const k of keys || []) {
+    const key = String(k).trim()
+    if (!key) continue
+    const re = new RegExp(`\\[SECTION:${escapeRegExp(key)}\\]([\\s\\S]*?)\\[/SECTION\\]`, 'm')
+    const match = safeText.match(re)
+    if (match && typeof match[1] === 'string') {
+      const extracted = match[1].replace(/\s+$/, '')
+      if (extracted.trim()) mapping[key] = extracted
+    }
+  }
+  return mapping
+}
+
+function composeMasterFromDrafts(keys: string[], draftMap: Record<string, string>) {
+  const parts: string[] = []
+  for (const k of keys || []) {
+    const key = String(k).trim()
+    if (!key) continue
+    const promptText = (draftMap[key] ?? '').replace(/\s+$/, '')
+    parts.push(`[SECTION:${key}]\n${promptText}\n[/SECTION]`)
+  }
+  return parts.join('\n\n')
+}
 
 const reportTitle = computed(
   () =>
@@ -305,6 +341,12 @@ function markDirty(sectionKey) {
 
 function onDraftEdit(sectionKey) {
   markDirty(sectionKey)
+  // Keep master prompt synchronized (canonical marker format) when user edits a section prompt.
+  // This is the bidirectional link: module edits -> master prompt.
+  const keys = pairedRows.value.map((p) => p.sectionKey)
+  syncingFromModules.value = true
+  masterEditor.value = composeMasterFromDrafts(keys, drafts)
+  syncingFromModules.value = false
 }
 
 function canRegenerate(pair) {
@@ -312,19 +354,47 @@ function canRegenerate(pair) {
 }
 
 function syncDrafts() {
+  const keys = pairedRows.value.map((p) => p.sectionKey)
+
+  // Decompose master prompt into per-section editor content.
+  const extracted = parseMasterPromptForKeys(masterEditor.value || '', keys)
+
   for (const pair of pairedRows.value) {
-    if (drafts[pair.sectionKey] === undefined) {
-      const text = pair.module?.prompt_text || ''
-      drafts[pair.sectionKey] = text
-      baselines[pair.sectionKey] = text
-    } else if (baselines[pair.sectionKey] === undefined) {
-      baselines[pair.sectionKey] = pair.module?.prompt_text || drafts[pair.sectionKey] || ''
-    }
+    const key = pair.sectionKey
+    const fromMaster = extracted[key]
+    const fallback = pair.module?.prompt_text || ''
+    const next = typeof fromMaster === 'string' ? fromMaster : fallback
+
+    drafts[key] = next
+    baselines[key] = next
   }
+
+  // Canonicalize the master prompt so it always contains all section markers.
+  syncingFromModules.value = true
+  masterEditor.value = composeMasterFromDrafts(keys, drafts)
+  syncingFromModules.value = false
+
   if (!selectedKey.value && pairedRows.value.length) {
     selectedKey.value = pairedRows.value[0].sectionKey
   }
 }
+
+watch(
+  masterEditor,
+  () => {
+    if (syncingFromModules.value) return
+    const keys = pairedRows.value.map((p) => p.sectionKey)
+    const extracted = parseMasterPromptForKeys(masterEditor.value || '', keys)
+    for (const key of keys) {
+      if (typeof extracted[key] === 'string') {
+        drafts[key] = extracted[key]
+        // markDirty uses baselines; we reuse it to keep dirty highlights correct.
+        markDirty(key)
+      }
+    }
+  },
+  { deep: false },
+)
 
 async function selectSection(key, origin) {
   selectedKey.value = key
@@ -348,6 +418,8 @@ async function loadReport() {
   try {
     const resp = await api.getReport(props.reportId)
     report.value = resp.data
+    masterEditor.value =
+      resp.data?.user_prompt || resp.data?.metadata?.user_prompt || resp.data?.metadata?.user_prompt || ''
     syncDrafts()
   } catch {
     statusMessage.value = 'Failed to load report.'
