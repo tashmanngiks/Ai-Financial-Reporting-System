@@ -169,6 +169,12 @@ export const api = {
     )
   },
 
+  getReportSectionHistory(reportId, sectionKey) {
+    return apiClient.get(
+      `/simple-reports/${reportId}/sections/${encodeURIComponent(sectionKey)}/history/`,
+    )
+  },
+
   getReportSectionMappings(reportId) {
     return apiClient.get(`/simple-reports/${reportId}/section-mappings/`)
   },

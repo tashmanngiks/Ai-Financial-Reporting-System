@@ -181,7 +181,6 @@ const reportTitle = computed(() => {
 })
 
 const displaySections = computed(() => {
-  if (!report.value?.ai_enhanced) return []
   return report.value?.comprehensive_analysis || []
 })
 

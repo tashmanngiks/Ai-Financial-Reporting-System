@@ -49,6 +49,8 @@
             Dataset-level context (section prompts below control each report block).
           </p>
           <textarea
+            id="master-analysis-prompt"
+            name="master_analysis_prompt"
             class="w-full border border-gray-200 rounded p-2 font-mono text-xs leading-relaxed max-h-48 overflow-y-auto focus:ring-1 focus:ring-[#08AAC7] bg-white"
             :readonly="!isAdmin"
             v-model="masterEditor"
@@ -89,6 +91,8 @@
           </div>
 
           <textarea
+            :id="`section-prompt-${pair.sectionKey}`"
+            :name="`section_prompt_${pair.sectionKey}`"
             v-model="drafts[pair.sectionKey]"
             rows="8"
             class="w-full border border-gray-200 rounded p-2 font-mono text-xs leading-relaxed focus:ring-1 focus:ring-[#08AAC7] bg-white"
@@ -142,6 +146,14 @@
                 v-if="changedKeys.has(pair.sectionKey)"
                 class="text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800"
               >Updated</span>
+              <span
+                v-if="sectionState(pair.sectionKey) === 'REGENERATING'"
+                class="text-[11px] px-2 py-0.5 rounded bg-blue-100 text-blue-800"
+              >Regenerating</span>
+              <span
+                v-else-if="sectionState(pair.sectionKey) === 'ERROR'"
+                class="text-[11px] px-2 py-0.5 rounded bg-red-100 text-red-800"
+              >Generation failed</span>
               <button
                 type="button"
                 class="text-xs px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
@@ -168,6 +180,26 @@
           <ul v-if="pair.recommendations.length" class="mt-3 list-disc list-inside text-sm text-gray-700 space-y-1">
             <li v-for="(rec, i) in pair.recommendations" :key="'rec-' + i">{{ formatRec(rec) }}</li>
           </ul>
+          <details v-if="versionHistory(pair).length" class="mt-4 rounded border border-gray-200 bg-gray-50 px-3 py-2">
+            <summary class="cursor-pointer text-xs font-semibold uppercase tracking-wide text-gray-600">
+              Version history
+            </summary>
+            <div class="mt-2 space-y-2">
+              <div v-for="version in versionHistory(pair)" :key="version.id || version.version_number" class="text-xs text-gray-700">
+                <div class="font-medium text-gray-900">
+                  Version {{ version.version_number }}
+                  <span v-if="version.is_current" class="text-emerald-700">· current</span>
+                </div>
+                <div class="text-gray-500">
+                  {{ formatTimestamp(version.generated_at) }}
+                  <span v-if="version.generation_reason">· {{ version.generation_reason }}</span>
+                </div>
+                <div v-if="version.generation_status" class="text-gray-500">
+                  Status: {{ version.generation_status }}
+                </div>
+              </div>
+            </div>
+          </details>
         </article>
 
         <p v-if="!pairedRows.length" class="text-sm text-gray-500 text-center py-12">
@@ -230,6 +262,7 @@ const regenerating = ref(false)
 const regeneratingKey = ref<string>('')
 const regeneratingLabel = ref('')
 const statusMessage = ref('')
+const sectionStates = reactive<Record<string, { state: string; error: string }>>({})
 
 const masterEditor = ref('')
 const syncingFromModules = ref(false)
@@ -295,6 +328,15 @@ function formatRec(rec: any) {
   if (typeof rec === 'string') return rec
   if (rec && typeof rec === 'object') return rec.action || rec.area || JSON.stringify(rec)
   return String(rec)
+}
+
+function formatTimestamp(value: string | null | undefined) {
+  if (!value) return 'Unknown time'
+  try {
+    return new Date(value).toLocaleString()
+  } catch {
+    return String(value)
+  }
 }
 
 function moduleForSection(sectionKey: string, section: AnyRecord | null) {
@@ -375,7 +417,25 @@ function onDraftEdit(sectionKey: string) {
 }
 
 function canRegenerate(pair: GeneratedPair) {
-  return Boolean(pair?.sectionKey && (drafts[pair.sectionKey] || '').trim())
+  const prompt = (drafts[pair.sectionKey] || '').trim()
+  return Boolean(pair?.sectionKey && prompt && prompt !== (baselines[pair.sectionKey] || '').trim() && sectionState(pair.sectionKey) !== 'REGENERATING')
+}
+
+function sectionState(sectionKey: string) {
+  return sectionStates[sectionKey]?.state || (dirtyKeys.value.has(sectionKey) ? 'DIRTY' : 'UNCHANGED')
+}
+
+function setSectionState(sectionKey: string, state: string, error = '') {
+  sectionStates[sectionKey] = { state, error }
+}
+
+function versionHistory(pair: GeneratedPair) {
+  const versions = report.value?.section_versions?.[pair.sectionKey]
+  if (Array.isArray(versions)) {
+    return [...versions].sort((a, b) => Number(b?.version_number || 0) - Number(a?.version_number || 0))
+  }
+  const history = report.value?.section_history?.[pair.sectionKey]
+  return Array.isArray(history) ? history : []
 }
 
 function syncDrafts() {
@@ -392,6 +452,7 @@ function syncDrafts() {
 
     drafts[key] = next
     baselines[key] = next
+    setSectionState(key, 'UNCHANGED')
   }
 
   // Canonicalize the master prompt so it always contains all section markers.
@@ -453,34 +514,19 @@ async function loadReport() {
   }
 }
 
-async function persistModuleIfPossible(pair: GeneratedPair) {
-  if (!pair.module || !isAdmin.value) return null
-  try {
-    const resp = await api.updatePromptModule(pair.module.id, {
-      prompt_text: drafts[pair.sectionKey],
-      change_comment: `Edited ${pair.promptTitle} before section regeneration`,
-    })
-    const updated = resp.data?.prompt_module
-    if (updated) {
-      modules.value = modules.value.map((m) => (m.id === updated.id ? updated : m))
-      baselines[pair.sectionKey] = updated.prompt_text
-      drafts[pair.sectionKey] = updated.prompt_text
-    }
-    return updated
-  } catch {
-    // Non-fatal: regeneration can still use the draft prompt text
-    return null
-  }
-}
-
 async function regenerateOne(pair: GeneratedPair) {
   if (!pair?.sectionKey || regenerating.value) return
+  if (!canRegenerate(pair)) {
+    setSectionState(pair.sectionKey, 'ERROR', 'Prompt validation failed')
+    statusMessage.value = 'Prompt has not changed or is invalid.'
+    return
+  }
   regenerating.value = true
   regeneratingKey.value = pair.sectionKey
   regeneratingLabel.value = pair.reportTitle
+  setSectionState(pair.sectionKey, 'REGENERATING')
   statusMessage.value = `Regenerating “${pair.reportTitle}” only…`
   try {
-    await persistModuleIfPossible(pair)
     await api.regenerateReportSection(props.reportId, pair.sectionKey, {
       reason: 'edited prompt section regeneration',
       prompt: drafts[pair.sectionKey],
@@ -491,11 +537,13 @@ async function regenerateOne(pair: GeneratedPair) {
     dirty.delete(pair.sectionKey)
     dirtyKeys.value = dirty
     changedKeys.value = new Set([...changedKeys.value, pair.sectionKey])
+    setSectionState(pair.sectionKey, 'GENERATED')
     selectedKey.value = pair.sectionKey
     statusMessage.value = `Updated only “${pair.reportTitle}”. Other sections were left unchanged.`
     emit('updated', pair.sectionKey)
   } catch (err: any) {
     statusMessage.value = err?.response?.data?.error || 'Section regeneration failed.'
+    setSectionState(pair.sectionKey, 'ERROR', statusMessage.value)
   } finally {
     regenerating.value = false
     regeneratingKey.value = ''
@@ -521,6 +569,7 @@ watch(
   async () => {
     Object.keys(drafts).forEach((k) => delete drafts[k])
     Object.keys(baselines).forEach((k) => delete baselines[k])
+    Object.keys(sectionStates).forEach((k) => delete sectionStates[k])
     dirtyKeys.value = new Set()
     changedKeys.value = new Set()
     await loadReport()

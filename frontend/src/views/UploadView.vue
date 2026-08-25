@@ -323,6 +323,8 @@
                 </div>
 
                 <textarea
+                  id="dataset-master-prompt"
+                  name="dataset_master_prompt"
                   v-model="promptDraft"
                   rows="12"
                   class="w-full border border-gray-300 rounded-lg p-3 font-mono text-sm leading-relaxed focus:ring-2 focus:ring-[#08AAC7] focus:border-[#08AAC7]"
