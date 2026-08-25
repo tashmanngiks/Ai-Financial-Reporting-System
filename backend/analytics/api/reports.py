@@ -271,13 +271,18 @@ def regenerate_report_section_view(request, report_id, section_key):
         section_history[resolved_section_key] = prior_history[-10:]
 
         existing = []
+        replaced = False
         for section in sections:
             key = str(section.get('section_key') or section.get('key') or '').strip()
             title = str(section.get('title', '')).strip().lower().replace(' ', '_')
-            if key == section_key or key == resolved_section_key or title == section_key or title == resolved_section_key:
+            if not replaced and (key == section_key or key == resolved_section_key or title == section_key or title == resolved_section_key):
                 existing.append(new_section)
+                replaced = True
             else:
                 existing.append(section)
+        # If no existing section matched, append the new section at the end.
+        if not replaced:
+            existing.append(new_section)
 
         model_used = analysis_result.get('model_used') or getattr(settings, 'OPENAI_MODEL', 'gpt-4o-mini')
         usage = analysis_result.get('usage') or {}
@@ -289,6 +294,22 @@ def regenerate_report_section_view(request, report_id, section_key):
             confidence_score=0.85,
             regeneration_reason=reason,
         )
+
+        # Ensure section keys are unique to avoid duplicate entries displayed
+        # in the frontend (which can cause left/right pane mismatches).
+        seen_keys = set()
+        unique_annotated = []
+        for s in annotated or []:
+            k = str(s.get('section_key') or s.get('key') or '').strip()
+            if not k:
+                unique_annotated.append(s)
+                continue
+            if k in seen_keys:
+                # skip duplicate
+                continue
+            seen_keys.add(k)
+            unique_annotated.append(s)
+        annotated = unique_annotated
 
         try:
             from ..services.prompt_module_store import compose_master_prompt
@@ -302,11 +323,34 @@ def regenerate_report_section_view(request, report_id, section_key):
                 all_section_keys,
                 {'bank_name': bank_name, 'data_period': data_period},
             )
+            
+            # Update the Dataset Analysis Prompt if this was a dataset-based report
+            dataset_type = report.get('dataset_type') or report.get('metadata', {}).get('dataset_type')
+            if dataset_type:
+                from ..api.uploads import DATASET_TYPE_RULES
+                if dataset_type in DATASET_TYPE_RULES:
+                    dataset_rule = DATASET_TYPE_RULES[dataset_type]
+                    prompt_id = dataset_rule.get('prompt_id')
+                    if prompt_id:
+                        try:
+                            update_analysis_prompt_content(
+                                prompt_id,
+                                master_prompt,
+                                user=request.user,
+                            )
+                        except Exception as prompt_update_error:
+                            # Log but don't fail the section regeneration if prompt update fails
+                            import logging
+                            logging.getLogger(__name__).warning(
+                                f'Failed to update Dataset Analysis Prompt {prompt_id}: {prompt_update_error}'
+                            )
         except Exception:
             master_prompt = report.get('user_prompt') or ''
 
         new_metadata = dict(report.get('metadata') or {})
         new_metadata['user_prompt'] = master_prompt
+        new_metadata['master_prompt_updated_at'] = datetime.now().isoformat()
+        new_metadata['master_prompt_updated_by'] = request.user.username if getattr(request.user, 'is_authenticated', False) else None
 
         with transaction.atomic():
             update_report(report_id, {
@@ -353,6 +397,72 @@ def regenerate_report_section_view(request, report_id, section_key):
         })
     finally:
         cache.delete(lock_key)
+
+
+@csrf_exempt
+@api_view(['POST'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated])
+def save_master_prompt_to_dataset_prompt(request, report_id):
+    """Save master prompt edits back to the Dataset Analysis Prompt."""
+    try:
+        report = get_report(str(report_id))
+        if not report:
+            return JsonResponse({'error': 'Report not found'}, status=404)
+
+        record = get_report_record(report_id)
+        if record and record.owner_id and record.owner_id != request.user.id and not request.user.is_staff:
+            return JsonResponse({'error': 'You do not have access to this report.'}, status=403)
+
+        body = request.data if isinstance(getattr(request, 'data', None), dict) else {}
+        master_prompt = str(body.get('master_prompt') or '').strip()
+
+        if not master_prompt:
+            return JsonResponse({'error': 'Master prompt cannot be empty.'}, status=400)
+
+        # Get the dataset type from the report
+        dataset_type = report.get('dataset_type') or report.get('metadata', {}).get('dataset_type')
+        if not dataset_type:
+            return JsonResponse({'error': 'No dataset type found in report.'}, status=400)
+
+        from ..api.uploads import DATASET_TYPE_RULES
+        if dataset_type not in DATASET_TYPE_RULES:
+            return JsonResponse({'error': f'Invalid dataset type: {dataset_type}'}, status=400)
+
+        dataset_rule = DATASET_TYPE_RULES[dataset_type]
+        prompt_id = dataset_rule.get('prompt_id')
+        if not prompt_id:
+            return JsonResponse({'error': 'No prompt ID found for dataset type.'}, status=400)
+
+        # Update the Dataset Analysis Prompt
+        updated_prompt = update_analysis_prompt_content(
+            prompt_id,
+            master_prompt,
+            user=request.user,
+        )
+
+        # Also update the report's master prompt
+        new_metadata = dict(report.get('metadata') or {})
+        new_metadata['user_prompt'] = master_prompt
+        new_metadata['master_prompt_updated_at'] = datetime.now().isoformat()
+        new_metadata['master_prompt_updated_by'] = request.user.username if getattr(request.user, 'is_authenticated', False) else None
+
+        update_report(report_id, {
+            'user_prompt': master_prompt,
+            'metadata': new_metadata,
+        }, request=request)
+
+        return JsonResponse({
+            'success': True,
+            'prompt_id': prompt_id,
+            'updated_at': updated_prompt.updated_at.isoformat() if updated_prompt.updated_at else None,
+            'message': f'Successfully updated Dataset Analysis Prompt for {dataset_type.upper()}'
+        })
+
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f'Error saving master prompt to dataset prompt: {e}')
+        return JsonResponse({'error': f'Failed to save master prompt: {str(e)}'}, status=500)
 
 
 @csrf_exempt

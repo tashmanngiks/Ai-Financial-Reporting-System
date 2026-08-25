@@ -242,7 +242,11 @@ def get_prompt_module_for_section(section_key: str) -> PromptModule | None:
         related_sections = candidate.related_sections or []
         if section_key in related_sections:
             return candidate
-    return PromptModule.objects.filter(slug='executive-summary').first()
+
+    # Do not fall back to the Executive Summary prompt for every unmapped section.
+    # That causes unrelated report sections to reuse the wrong prompt text in the
+    # left-hand split-pane editor, which is the duplicate/misassigned behavior we saw.
+    return None
 
 
 def list_prompt_module_versions(module: PromptModule) -> list[PromptModuleVersion]:

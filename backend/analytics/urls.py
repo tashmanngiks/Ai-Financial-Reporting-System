@@ -36,6 +36,7 @@ from .api.reports import (
     report_section_mappings_view,
     regenerate_report_section_view,
     report_section_history_view,
+    save_master_prompt_to_dataset_prompt,
 )
 from .api.prompt_modules import (
     list_prompt_modules_view,
@@ -120,6 +121,10 @@ urlpatterns = [
     path(
         'simple-reports/<uuid:report_id>/sections/<str:section_key>/history/',
         report_section_history_view,
+    ),
+    path(
+        'simple-reports/<uuid:report_id>/save-master-prompt/',
+        save_master_prompt_to_dataset_prompt,
     ),
     # User settings (per-user persisted preferences)
     path('user-settings/', get_user_settings),
