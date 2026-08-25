@@ -75,6 +75,14 @@ def get_report(report_id: str) -> dict[str, Any] | None:
     return report
 
 
+def get_report_record(report_id: str) -> PersistedReport | None:
+    """Return the database row for a persisted report, if it exists."""
+    try:
+        return PersistedReport.objects.get(pk=str(report_id))
+    except (PersistedReport.DoesNotExist, ValueError):
+        return None
+
+
 def save_report(report_id: str, report_data: dict[str, Any], request=None) -> dict[str, Any]:
     report_id = str(report_id)
     report_data = dict(report_data)

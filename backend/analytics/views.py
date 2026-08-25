@@ -1949,6 +1949,7 @@ def generate_comprehensive_ai_analysis(context):
     try:
         import openai
 
+        started_at = time.perf_counter()
         api_key = get_openai_api_key()
         if not api_key:
             logger.debug("OpenAI API key not found")
@@ -2038,6 +2039,15 @@ def generate_comprehensive_ai_analysis(context):
         )
         
         ai_content = response.choices[0].message.content
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        usage = {}
+        if getattr(response, 'usage', None):
+            usage = {
+                'input_tokens': getattr(response.usage, 'prompt_tokens', None),
+                'output_tokens': getattr(response.usage, 'completion_tokens', None),
+                'total_tokens': getattr(response.usage, 'total_tokens', None),
+            }
+        model_used = getattr(response, 'model', None) or model
 
         try:
             ai_response = json.loads(ai_content)
@@ -2045,7 +2055,14 @@ def generate_comprehensive_ai_analysis(context):
             if not sections and isinstance(ai_response, list):
                 sections = ai_response
             if sections:
-                return {'success': True, 'sections': sections, 'ai_enhanced': True}
+                return {
+                    'success': True,
+                    'sections': sections,
+                    'ai_enhanced': True,
+                    'model_used': model_used,
+                    'usage': usage,
+                    'duration_ms': duration_ms,
+                }
         except json.JSONDecodeError:
             # If not JSON, create structured response from text
             sections = []
@@ -2076,14 +2093,28 @@ def generate_comprehensive_ai_analysis(context):
                 sections.append(current_section)
             
             if sections:
-                return {'success': True, 'sections': sections, 'ai_enhanced': True}
+                return {
+                    'success': True,
+                    'sections': sections,
+                    'ai_enhanced': True,
+                    'model_used': model_used,
+                    'usage': usage,
+                    'duration_ms': duration_ms,
+                }
             fallback_sections = build_dynamic_report_sections(
                 report_options.get('sections', []),
                 context.get('financial_data', {}),
                 report_options,
             )
             if fallback_sections:
-                return {'success': True, 'sections': fallback_sections, 'ai_enhanced': False}
+                return {
+                    'success': True,
+                    'sections': fallback_sections,
+                    'ai_enhanced': False,
+                    'model_used': model_used,
+                    'usage': usage,
+                    'duration_ms': duration_ms,
+                }
             return {'success': False, 'error': 'AI response could not be parsed. Please try again.'}
 
         fallback_sections = build_dynamic_report_sections(
@@ -2092,7 +2123,14 @@ def generate_comprehensive_ai_analysis(context):
             report_options,
         )
         if fallback_sections:
-            return {'success': True, 'sections': fallback_sections, 'ai_enhanced': False}
+            return {
+                'success': True,
+                'sections': fallback_sections,
+                'ai_enhanced': False,
+                'model_used': model_used,
+                'usage': usage,
+                'duration_ms': duration_ms,
+            }
         return {'success': False, 'error': 'AI returned an empty report. Please refine your prompt and try again.'}
 
     except Exception as e:

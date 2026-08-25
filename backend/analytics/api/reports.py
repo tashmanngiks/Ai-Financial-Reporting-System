@@ -1,11 +1,16 @@
 """Report and insights endpoints."""
 
 import json
+import uuid
+import time
+import re
 from datetime import datetime
 
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from django.db import transaction
+from django.core.cache import cache
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from django.contrib.auth import get_user_model
@@ -18,12 +23,14 @@ from ..services.report_store import (
     archive_reports,
     delete_reports,
     get_report,
+    get_report_record,
     list_report_ids,
     list_report_records,
     list_reports,
     restore_reports,
     update_report,
 )
+from ..services.report_section_store import append_section_version, get_section_history
 from ..services.report_prompt_registry import clear_report_prompt_registry_cache, get_report_prompt_registry
 from ..services.prompt_settings_store import (
     build_prompt_config_payload,
@@ -112,11 +119,13 @@ def report_section_mappings_view(request, report_id):
 @authentication_classes([CsrfExemptSessionAuthentication])
 @permission_classes([IsAuthenticated])
 def regenerate_report_section_view(request, report_id, section_key):
-    """Regenerate only one report section from its linked prompt module."""
+    """Regenerate only one report section after validating and persisting its prompt."""
     from django.conf import settings
     from ..services.prompt_module_store import (
         apply_section_traceability,
         get_prompt_module_for_section,
+        serialize_prompt_module_version,
+        update_prompt_module,
     )
     from ..views import (
         build_data_summary,
@@ -126,125 +135,251 @@ def regenerate_report_section_view(request, report_id, section_key):
         perform_initial_ai_analysis,
     )
 
-    report = get_report(str(report_id))
+    report_id = str(report_id)
+    section_key = str(section_key).strip()
+    request_id = uuid.uuid4().hex
+    lock_key = f'analytics:regen:{report_id}:{section_key}'
+    body = request.data if isinstance(getattr(request, 'data', None), dict) else {}
+    edited_prompt = str(body.get('prompt') or '').strip()
+    reason = str(body.get('reason') or 'section regeneration').strip() or 'section regeneration'
+
+    if not section_key:
+        return JsonResponse({'error': 'Invalid section key.'}, status=400)
+    if not edited_prompt:
+        return JsonResponse({'error': 'Prompt cannot be empty.'}, status=400)
+    if len(edited_prompt) < 3:
+        return JsonResponse({'error': 'Prompt is too short.'}, status=400)
+    if len(edited_prompt) > 12000:
+        return JsonResponse({'error': 'Prompt exceeds maximum allowed length.'}, status=400)
+
+    report = get_report(report_id)
     if not report:
         return JsonResponse({'error': 'Report not found'}, status=404)
+
+    record = get_report_record(report_id)
+    if record and record.owner_id and record.owner_id != request.user.id and not request.user.is_staff:
+        return JsonResponse({'error': 'You do not have access to this report.'}, status=403)
 
     original_json = (report.get('metadata') or {}).get('original_json')
     if not original_json:
         return JsonResponse({'error': 'Original JSON data not found in report'}, status=400)
 
-    section_key = str(section_key).strip()
-    module = get_prompt_module_for_section(section_key)
-    body = request.data if isinstance(getattr(request, 'data', None), dict) else {}
-    edited_prompt = (body.get('prompt') or '').strip()
-    user_prompt = (
-        edited_prompt
-        or (module.prompt_text if module else None)
-        or report.get('user_prompt')
-        or (report.get('metadata') or {}).get('user_prompt')
-        or f'Regenerate the {section_key} section'
-    )
+    sections = list(report.get('comprehensive_analysis') or [])
+    section_index = None
+    section_key_match = None
+    if section_key.startswith('section_'):
+        try:
+            section_index = int(section_key.split('_', 1)[1])
+        except (IndexError, ValueError):
+            section_index = None
+    existing_section = None
+    for idx, section in enumerate(sections):
+        key = str(section.get('section_key') or section.get('key') or '').strip()
+        title_key = str(section.get('title', '')).strip().lower().replace(' ', '_')
+        if key == section_key or title_key == section_key:
+            existing_section = section
+            section_key_match = key or title_key or f'section_{idx}'
+            break
+        if section_index is not None and idx == section_index:
+            existing_section = section
+            section_key_match = key or title_key or f'section_{idx}'
+            break
+    if not existing_section:
+        return JsonResponse({'error': 'Invalid section key for this report.'}, status=400)
+
+    resolved_section_key = section_key_match or section_key
+
+    section_history = dict(report.get('section_history') or {})
+    prior_history = list(section_history.get(resolved_section_key) or [])
 
     report_options = dict(report.get('report_options') or (report.get('metadata') or {}).get('report_options') or {})
-    report_options['sections'] = [section_key]
+    report_options['sections'] = [resolved_section_key]
+    report_options['include_sections'] = [resolved_section_key]
+    report_options['exclude_sections'] = [
+        key for key in (report.get('report_options') or {}).get('sections', [])
+        if key != resolved_section_key
+    ]
     report_options['template'] = report_options.get('template') or 'custom'
 
-    bank_name, data_period = extract_entity_metadata(original_json)
-    normalized_json, _ = normalize_json_for_analysis(original_json)
-    analysis_result = generate_comprehensive_ai_analysis({
-        'bank_name': bank_name or report.get('bank_name'),
-        'data_period': data_period or report.get('data_period'),
-        'financial_data': normalized_json,
-        'raw_financial_data': original_json,
-        'existing_analysis': report.get('ai_analysis') or perform_initial_ai_analysis(original_json),
-        'data_summary': build_data_summary(original_json),
-        'user_prompt': user_prompt,
-        'report_options': report_options,
-        # Force the edited text as the section instruction (not the old DB module).
-        'section_prompt_overrides': {section_key: edited_prompt} if edited_prompt else {},
-    })
+    section_prompt_module = None
+    if not re.match(r'^section_\d+$', section_key):
+        section_prompt_module = get_prompt_module_for_section(section_key)
+    exact_module = None
+    if section_prompt_module:
+        related_sections = [str(item).strip() for item in (section_prompt_module.related_sections or [])]
+        if section_key in related_sections or section_prompt_module.slug in {section_key, section_key.replace('_', '-')}:
+            exact_module = section_prompt_module
+    if exact_module and (exact_module.prompt_text or '').strip() == edited_prompt:
+        return JsonResponse({'error': 'Prompt has not changed.'}, status=400)
 
-    if not analysis_result or not analysis_result.get('success'):
-        return JsonResponse({'error': (analysis_result or {}).get('error') or 'Section regeneration failed'}, status=503)
+    if not cache.add(lock_key, request_id, timeout=15 * 60):
+        return JsonResponse({'error': 'Another regeneration is already running for this section.'}, status=409)
 
-    new_sections = analysis_result.get('sections') or []
-    if not new_sections:
-        return JsonResponse({'error': 'AI returned no section content'}, status=500)
-
-    new_section = dict(new_sections[0])
-    new_section['section_key'] = section_key
-    previous = None
-    existing = list(report.get('comprehensive_analysis') or [])
-    history = dict(report.get('section_history') or {})
-    replaced = False
-    for index, section in enumerate(existing):
-        key = section.get('section_key') or section.get('key')
-        title = str(section.get('title', '')).strip().lower().replace(' ', '_')
-        if key == section_key or title == section_key:
-            previous = section
-            prior = list(history.get(section_key) or [])
-            prior.append({
-                'content': section.get('content'),
-                'title': section.get('title'),
-                'trace': section.get('trace'),
-                'replaced_at': datetime.now().isoformat(),
-            })
-            history[section_key] = prior[-10:]
-            existing[index] = new_section
-            replaced = True
-            break
-    if not replaced:
-        existing.append(new_section)
-
-    annotated = apply_section_traceability(
-        str(report_id),
-        existing,
-        report_options={**report_options, 'sections': [s.get('section_key') or section_key for s in existing]},
-        ai_model=getattr(settings, 'OPENAI_MODEL', 'gpt-4o-mini'),
-        confidence_score=0.85,
-        regeneration_reason=body.get('reason') or 'section regeneration',
-    )
-
-    # Keep the report "Master Prompt" synchronized to the current per-section prompt modules.
     try:
-        from ..services.prompt_module_store import compose_master_prompt
+        bank_name, data_period = extract_entity_metadata(original_json)
+        normalized_json, _ = normalize_json_for_analysis(original_json)
 
-        all_section_keys = (
-            (report.get('report_options') or {}).get('sections')
-            or (report.get('metadata') or {}).get('report_options', {}).get('sections')
-            or [section_key]
+        module = exact_module
+        if module is not None:
+            module = update_prompt_module(
+                module,
+                {'prompt_text': edited_prompt, 'status': 'active'},
+                user=request.user,
+                change_comment=reason,
+            )
+
+        prompt_version_obj = module.versions.order_by('-version_number', '-created_at').first() if module else None
+        prompt_version = serialize_prompt_module_version(prompt_version_obj) if prompt_version_obj else {
+            'id': None,
+            'version_number': 1,
+            'prompt_text': edited_prompt,
+        }
+
+        generation_started = time.perf_counter()
+        analysis_result = generate_comprehensive_ai_analysis({
+            'bank_name': bank_name or report.get('bank_name'),
+            'data_period': data_period or report.get('data_period'),
+            'financial_data': normalized_json,
+            'raw_financial_data': original_json,
+            'existing_analysis': report.get('ai_analysis') or perform_initial_ai_analysis(original_json),
+            'data_summary': build_data_summary(original_json),
+            'user_prompt': report.get('user_prompt') or (report.get('metadata') or {}).get('user_prompt') or edited_prompt,
+            'report_options': report_options,
+            'section_prompt_overrides': {resolved_section_key: edited_prompt},
+        })
+        generation_duration_ms = int((time.perf_counter() - generation_started) * 1000)
+
+        if not analysis_result or not analysis_result.get('success'):
+            return JsonResponse({'error': (analysis_result or {}).get('error') or 'Section regeneration failed'}, status=503)
+
+        new_sections = analysis_result.get('sections') or []
+        if len(new_sections) != 1:
+            return JsonResponse({'error': 'The AI returned an invalid section structure.'}, status=500)
+
+        new_section = dict(new_sections[0])
+        new_section['section_key'] = resolved_section_key
+        if not new_section.get('content'):
+            return JsonResponse({'error': 'The AI returned an empty section.'}, status=500)
+
+        previous = dict(existing_section)
+        prior_history.append({
+            'content': existing_section.get('content'),
+            'title': existing_section.get('title'),
+            'trace': existing_section.get('trace'),
+            'replaced_at': datetime.now().isoformat(),
+        })
+        section_history[resolved_section_key] = prior_history[-10:]
+
+        existing = []
+        for section in sections:
+            key = str(section.get('section_key') or section.get('key') or '').strip()
+            title = str(section.get('title', '')).strip().lower().replace(' ', '_')
+            if key == section_key or key == resolved_section_key or title == section_key or title == resolved_section_key:
+                existing.append(new_section)
+            else:
+                existing.append(section)
+
+        model_used = analysis_result.get('model_used') or getattr(settings, 'OPENAI_MODEL', 'gpt-4o-mini')
+        usage = analysis_result.get('usage') or {}
+        annotated = apply_section_traceability(
+            report_id,
+            existing,
+            report_options={**report_options, 'sections': [s.get('section_key') or resolved_section_key for s in existing]},
+            ai_model=model_used,
+            confidence_score=0.85,
+            regeneration_reason=reason,
         )
-        master_prompt = compose_master_prompt(
-            all_section_keys,
-            {'bank_name': bank_name, 'data_period': data_period},
-        )
-    except Exception:
-        master_prompt = report.get('user_prompt') or ''
 
-    new_metadata = dict(report.get('metadata') or {})
-    new_metadata['user_prompt'] = master_prompt
+        try:
+            from ..services.prompt_module_store import compose_master_prompt
 
-    update_report(str(report_id), {
-        'comprehensive_analysis': annotated,
-        'section_history': history,
-        'ai_enhanced': True,
-        'user_prompt': master_prompt,
-        'metadata': new_metadata,
-    }, request=request)
+            all_section_keys = (
+                (report.get('report_options') or {}).get('sections')
+                or (report.get('metadata') or {}).get('report_options', {}).get('sections')
+                or [section_key]
+            )
+            master_prompt = compose_master_prompt(
+                all_section_keys,
+                {'bank_name': bank_name, 'data_period': data_period},
+            )
+        except Exception:
+            master_prompt = report.get('user_prompt') or ''
 
-    regenerated = next((s for s in annotated if s.get('section_key') == section_key), annotated[-1] if annotated else new_section)
+        new_metadata = dict(report.get('metadata') or {})
+        new_metadata['user_prompt'] = master_prompt
+
+        with transaction.atomic():
+            update_report(report_id, {
+                'comprehensive_analysis': annotated,
+                'section_history': section_history,
+                'ai_enhanced': True,
+                'user_prompt': master_prompt,
+                'metadata': new_metadata,
+                'generation_request_id': request_id,
+            }, request=request)
+
+            version = append_section_version(
+                report_id,
+                section_key,
+                section=new_section,
+                prompt_version=prompt_version,
+                model_used=model_used,
+                generation_status='SUCCESS',
+                generation_reason=reason,
+                generated_by=request.user.username if getattr(request.user, 'is_authenticated', False) else None,
+                request_id=request_id,
+                duration_ms=generation_duration_ms,
+                usage=usage,
+            )
+
+        regenerated = next((s for s in annotated if s.get('section_key') == section_key), annotated[-1] if annotated else new_section)
+        return JsonResponse({
+            'success': True,
+            'report_id': report_id,
+                'section_key': section_key,
+                'resolved_section_key': resolved_section_key,
+            'section': regenerated,
+            'previous_section': previous,
+            'prompt_module': {
+                'id': module.id,
+                'name': module.name,
+                'version_current': module.version_current,
+            } if module else None,
+            'prompt_version': prompt_version,
+            'section_version': version,
+            'request_id': request_id,
+            'usage': usage,
+            'duration_ms': generation_duration_ms,
+        })
+    finally:
+        cache.delete(lock_key)
+
+
+@csrf_exempt
+@api_view(['GET'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated])
+def report_section_history_view(request, report_id, section_key):
+    report = get_report(str(report_id))
+    if not report:
+        return JsonResponse({'error': 'Report not found'}, status=404)
+    history = get_section_history(str(report_id), str(section_key))
+    if not history and str(section_key).startswith('section_'):
+        try:
+            idx = int(str(section_key).split('_', 1)[1])
+        except (IndexError, ValueError):
+            idx = None
+        if idx is not None:
+            sections = list(report.get('comprehensive_analysis') or [])
+            if 0 <= idx < len(sections):
+                resolved_key = str(sections[idx].get('section_key') or sections[idx].get('key') or section_key)
+                history = get_section_history(str(report_id), resolved_key)
     return JsonResponse({
         'success': True,
         'report_id': str(report_id),
-        'section_key': section_key,
-        'section': regenerated,
-        'previous_section': previous,
-        'prompt_module': {
-            'id': module.id,
-            'name': module.name,
-            'version_current': module.version_current,
-        } if module else None,
+        'section_key': str(section_key),
+        'history': history,
+        'count': len(history),
     })
 
 

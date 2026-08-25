@@ -35,6 +35,7 @@ from .api.reports import (
     bulk_report_action,
     report_section_mappings_view,
     regenerate_report_section_view,
+    report_section_history_view,
 )
 from .api.prompt_modules import (
     list_prompt_modules_view,
@@ -115,6 +116,10 @@ urlpatterns = [
     path(
         'simple-reports/<uuid:report_id>/sections/<str:section_key>/regenerate/',
         regenerate_report_section_view,
+    ),
+    path(
+        'simple-reports/<uuid:report_id>/sections/<str:section_key>/history/',
+        report_section_history_view,
     ),
     # User settings (per-user persisted preferences)
     path('user-settings/', get_user_settings),
