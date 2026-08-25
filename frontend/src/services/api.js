@@ -175,6 +175,14 @@ export const api = {
     )
   },
 
+  saveMasterPromptToDatasetPrompt(reportId, masterPrompt) {
+    return apiClient.post(
+      `/simple-reports/${reportId}/save-master-prompt/`,
+      { master_prompt: masterPrompt },
+      { timeout: 30000 },
+    )
+  },
+
   getReportSectionMappings(reportId) {
     return apiClient.get(`/simple-reports/${reportId}/section-mappings/`)
   },
