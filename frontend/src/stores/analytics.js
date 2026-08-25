@@ -125,7 +125,7 @@ export const useAnalyticsStore = defineStore('analytics', {
 
           attempts++
           if (attempts < maxAttempts) {
-            setTimeout(poll, 5000) // Poll every 5 seconds
+            setTimeout(poll, pollingInterval)
           } else {
             this.uploadStatus = 'failed'
             this.errors.upload = 'Analysis timed out'

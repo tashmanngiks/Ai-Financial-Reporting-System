@@ -97,8 +97,8 @@
       <div v-if="hasLegacyTemplateOnly" class="card border-amber-200 bg-amber-50">
         <div class="card-body text-sm text-amber-900">
           <p>
-            This report was created with an older template engine, not your prompt.
-            Use <strong>Regenerate AI Report</strong> after fixing your OpenAI billing to get a real AI analysis.
+            This report was created before section traceability was enabled.
+            Regenerate it from the current prompt modules to get the upgraded AI analysis and editable section mapping.
           </p>
         </div>
       </div>
@@ -225,4 +225,3 @@ watch(
   }
 )
 </script>
-

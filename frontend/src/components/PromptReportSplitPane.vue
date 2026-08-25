@@ -196,16 +196,38 @@ const emit = defineEmits(['updated'])
 const authStore = useAuthStore()
 const isAdmin = computed(() => Boolean(authStore.isAdmin))
 
+type AnyRecord = Record<string, any>
+
+interface PromptModuleRecord {
+  id: string | number
+  name?: string
+  prompt_text?: string
+  version_current?: number
+  related_sections?: string[]
+}
+
+interface GeneratedPair {
+  sectionKey: string
+  module: PromptModuleRecord | null
+  promptTitle: string
+  reportTitle: string
+  reportNarrative: string
+  keyPoints: any[]
+  recommendations: any[]
+  trace: AnyRecord | null
+  missing: boolean
+}
+
 const loading = ref(false)
-const report = ref(null)
-const modules = ref([])
-const selectedKey = ref('')
-const drafts = reactive({})
-const baselines = reactive({})
-const dirtyKeys = ref(new Set())
-const changedKeys = ref(new Set())
+const report = ref<AnyRecord | null>(null)
+const modules = ref<PromptModuleRecord[]>([])
+const selectedKey = ref<string>('')
+const drafts = reactive<Record<string, string>>({})
+const baselines = reactive<Record<string, string>>({})
+const dirtyKeys = ref<Set<string>>(new Set())
+const changedKeys = ref<Set<string>>(new Set())
 const regenerating = ref(false)
-const regeneratingKey = ref('')
+const regeneratingKey = ref<string>('')
 const regeneratingLabel = ref('')
 const statusMessage = ref('')
 
@@ -250,54 +272,57 @@ const reportTitle = computed(
     'Generated Financial Report',
 )
 
-function narrative(section) {
+function narrative(section: AnyRecord | null) {
   const c = section?.content
   if (typeof c === 'string') return c
   if (c && typeof c === 'object') return c.content || ''
   return ''
 }
 
-function keyPointsOf(section) {
+function keyPointsOf(section: AnyRecord | null) {
   const c = section?.content
   if (c && typeof c === 'object') return c.key_points || []
   return []
 }
 
-function recommendationsOf(section) {
+function recommendationsOf(section: AnyRecord | null) {
   const c = section?.content
   if (c && typeof c === 'object') return c.recommendations || []
   return []
 }
 
-function formatRec(rec) {
+function formatRec(rec: any) {
   if (typeof rec === 'string') return rec
   if (rec && typeof rec === 'object') return rec.action || rec.area || JSON.stringify(rec)
   return String(rec)
 }
 
-function moduleForSection(sectionKey, section) {
+function moduleForSection(sectionKey: string, section: AnyRecord | null) {
   const byId = section?.trace?.prompt_module_id
   if (byId) {
-    const found = modules.value.find((m) => m.id === byId)
+    const found = modules.value.find((m) => String(m.id) === String(byId))
     if (found) return found
   }
   return modules.value.find((m) => (m.related_sections || []).includes(sectionKey)) || null
 }
 
-const pairedRows = computed(() => {
-  const generated = report.value?.comprehensive_analysis || []
-  const generatedByKey = new Map()
+const pairedRows = computed<GeneratedPair[]>(() => {
+  const generated: AnyRecord[] = Array.isArray(report.value?.comprehensive_analysis)
+    ? report.value?.comprehensive_analysis
+    : []
+  const generatedByKey = new Map<string, AnyRecord>()
   generated.forEach((section, index) => {
     const key = section.section_key || section.key || `section_${index}`
     generatedByKey.set(key, section)
   })
 
-  const expectedKeys =
+  const expectedKeys: string[] = (
     report.value?.report_options?.sections ||
     report.value?.metadata?.report_options?.sections ||
     []
+  ).filter((key: unknown) => Boolean(key)) as string[]
 
-  const orderedKeys = []
+  const orderedKeys: string[] = []
   for (const key of expectedKeys) {
     if (key && !orderedKeys.includes(key)) orderedKeys.push(key)
   }
@@ -307,7 +332,7 @@ const pairedRows = computed(() => {
 
   const keys = orderedKeys.length ? orderedKeys : [...generatedByKey.keys()]
 
-  return keys.map((sectionKey) => {
+  return keys.map((sectionKey: string) => {
     const section = generatedByKey.get(sectionKey) || null
     const module = moduleForSection(sectionKey, section)
     const libraryTitle = sectionKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -325,12 +350,12 @@ const pairedRows = computed(() => {
   })
 })
 
-const selectedPair = computed(() => {
+const selectedPair = computed<GeneratedPair | null>(() => {
   if (!selectedKey.value || selectedKey.value === '__master__') return null
   return pairedRows.value.find((p) => p.sectionKey === selectedKey.value) || null
 })
 
-function markDirty(sectionKey) {
+function markDirty(sectionKey: string) {
   const current = drafts[sectionKey] ?? ''
   const baseline = baselines[sectionKey] ?? ''
   const next = new Set(dirtyKeys.value)
@@ -339,7 +364,7 @@ function markDirty(sectionKey) {
   dirtyKeys.value = next
 }
 
-function onDraftEdit(sectionKey) {
+function onDraftEdit(sectionKey: string) {
   markDirty(sectionKey)
   // Keep master prompt synchronized (canonical marker format) when user edits a section prompt.
   // This is the bidirectional link: module edits -> master prompt.
@@ -349,7 +374,7 @@ function onDraftEdit(sectionKey) {
   syncingFromModules.value = false
 }
 
-function canRegenerate(pair) {
+function canRegenerate(pair: GeneratedPair) {
   return Boolean(pair?.sectionKey && (drafts[pair.sectionKey] || '').trim())
 }
 
@@ -375,7 +400,7 @@ function syncDrafts() {
   syncingFromModules.value = false
 
   if (!selectedKey.value && pairedRows.value.length) {
-    selectedKey.value = pairedRows.value[0].sectionKey
+    selectedKey.value = pairedRows.value[0]!.sectionKey
   }
 }
 
@@ -396,7 +421,7 @@ watch(
   { deep: false },
 )
 
-async function selectSection(key, origin) {
+async function selectSection(key: string, origin: 'prompt' | 'report') {
   selectedKey.value = key
   await nextTick()
   const otherId = origin === 'prompt' ? `report-${key}` : `prompt-${key}`
@@ -428,7 +453,7 @@ async function loadReport() {
   }
 }
 
-async function persistModuleIfPossible(pair) {
+async function persistModuleIfPossible(pair: GeneratedPair) {
   if (!pair.module || !isAdmin.value) return null
   try {
     const resp = await api.updatePromptModule(pair.module.id, {
@@ -448,7 +473,7 @@ async function persistModuleIfPossible(pair) {
   }
 }
 
-async function regenerateOne(pair) {
+async function regenerateOne(pair: GeneratedPair) {
   if (!pair?.sectionKey || regenerating.value) return
   regenerating.value = true
   regeneratingKey.value = pair.sectionKey
@@ -461,7 +486,7 @@ async function regenerateOne(pair) {
       prompt: drafts[pair.sectionKey],
     })
     await loadReport()
-    baselines[pair.sectionKey] = drafts[pair.sectionKey]
+    baselines[pair.sectionKey] = drafts[pair.sectionKey] ?? ''
     const dirty = new Set(dirtyKeys.value)
     dirty.delete(pair.sectionKey)
     dirtyKeys.value = dirty
@@ -469,7 +494,7 @@ async function regenerateOne(pair) {
     selectedKey.value = pair.sectionKey
     statusMessage.value = `Updated only “${pair.reportTitle}”. Other sections were left unchanged.`
     emit('updated', pair.sectionKey)
-  } catch (err) {
+  } catch (err: any) {
     statusMessage.value = err?.response?.data?.error || 'Section regeneration failed.'
   } finally {
     regenerating.value = false

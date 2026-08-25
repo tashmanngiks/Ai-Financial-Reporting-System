@@ -24,9 +24,9 @@
     "chart.js": "^4.5.1",
     "lucide-vue-next": "^1.0.0",
     "pinia": "^3.0.4",
-    "vue": "beta",
+    "vue": "^3.5.17",
     "vue-chartjs": "^5.3.3",
-    "vue-router": "^5.0.4"
+    "vue-router": "^4.5.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
@@ -59,20 +59,5 @@
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
-  },
-  "overrides": {
-    "vue": "beta",
-    "@vue/compiler-core": "beta",
-    "@vue/compiler-dom": "beta",
-    "@vue/compiler-sfc": "beta",
-    "@vue/compiler-ssr": "beta",
-    "@vue/compiler-vapor": "beta",
-    "@vue/reactivity": "beta",
-    "@vue/runtime-core": "beta",
-    "@vue/runtime-dom": "beta",
-    "@vue/runtime-vapor": "beta",
-    "@vue/server-renderer": "beta",
-    "@vue/shared": "beta",
-    "@vue/compat": "beta"
   }
 }
