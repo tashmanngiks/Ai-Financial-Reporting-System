@@ -3,12 +3,22 @@ Celery configuration for Financial Analytics System.
 """
 
 import os
+import logging
 from celery import Celery
 from celery.schedules import crontab
 from django.conf import settings
 
 # Set default Django settings
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'financial_analytics.settings_sqlite')
+settings_module = os.environ.get('DJANGO_SETTINGS_MODULE')
+if not settings_module:
+    settings_module = (
+        'financial_analytics.settings_postgres'
+        if os.environ.get('DB_NAME') or os.environ.get('DATABASE_URL')
+        else 'financial_analytics.settings_sqlite'
+    )
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', settings_module)
+
+logger = logging.getLogger(__name__)
 
 app = Celery('financial_analytics')
 
@@ -49,11 +59,11 @@ try:
     app.conf.broker_url = CELERY_BROKER_URL
     app.conf.result_backend = CELERY_RESULT_BACKEND
 except Exception as e:
-    print(f"Warning: Could not configure Celery broker: {e}")
-    print("Celery will use in-memory broker. Configure Redis for production use.")
+    logger.warning("Could not configure Celery broker: %s", e)
+    logger.warning("Celery will use in-memory broker. Configure Redis for production use.")
 
 
 @app.task(bind=True)
 def debug_task(self):
     """Debug task for testing Celery setup."""
-    print(f'Request: {self.request!r}')
+    logger.debug("Celery debug task request: %r", self.request)

@@ -2,6 +2,7 @@
 
 import json
 import uuid
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -29,6 +30,9 @@ from ..views import (
     normalize_json_for_analysis,
     perform_initial_ai_analysis,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 DATASET_TYPE_RULES: dict[str, dict[str, Any]] = {
@@ -344,6 +348,39 @@ def simple_upload_view(request):
 
         master_prompt = _compose_master_prompt_from_section_prompts(section_keys, section_prompt_overrides) or analysis_request_prompt
 
+        processing_report_data = {
+            'id': report_id,
+            'filename': uploaded_file.name,
+            'size': uploaded_file.size,
+            'description': description,
+            'user_prompt': master_prompt,
+            'dataset_type': selected_dataset_type,
+            'detected_dataset_type': detected_dataset_type or selected_dataset_type,
+            'task_id': report_id,
+            'uploaded_at': current_time,
+            'status': 'processing',
+            'progress': 35,
+            'bank_name': bank_name,
+            'data_period': data_period,
+            'report_options': resolved_report_options,
+            'metadata': {
+                'title': dataset_rule['label'],
+                'report_date': current_time,
+                'period': data_period,
+                'generated_at': current_time,
+                'ai_processed': False,
+                'comprehensive_generated': False,
+                'ai_enhanced': False,
+                'user_prompt': master_prompt,
+                'dataset_type': selected_dataset_type,
+                'detected_dataset_type': detected_dataset_type or selected_dataset_type,
+                'original_json': original_json,
+                'normalized_json': normalized_json,
+                'report_options': resolved_report_options,
+            },
+        }
+        save_report(report_id, processing_report_data, request=request)
+
         # Best-effort: seed prompt modules so traceability aligns with the upload-selected prompt.
         # This creates prompt module versions to keep history.
         try:
@@ -437,7 +474,7 @@ def simple_upload_view(request):
                 report_data['comprehensive_analysis'] = annotated
                 update_report(report_id, {'comprehensive_analysis': annotated}, request=request)
             except Exception as exc:
-                print(f'DEBUG: section traceability skipped: {exc}')
+                logger.debug('Section traceability skipped for %s: %s', report_id, exc)
 
         response_data = {
             'success': True,
@@ -472,15 +509,40 @@ def simple_upload_view(request):
 @csrf_exempt
 @require_http_methods(["GET"])
 def simple_task_status_view(request, task_id):
-    """Simple task status view."""
+    """Return the latest report processing status for a task id."""
     report_id = str(task_id)
+    report = get_report(report_id)
+    if not report:
+        return JsonResponse({
+            'id': task_id,
+            'status': 'failed',
+            'progress': 0,
+            'message': 'Task not found',
+            'error_message': 'No matching report exists for this task id.',
+        }, status=404)
+
+    status_value = str(report.get('status') or 'completed')
+    if status_value == 'processing':
+        progress = int(report.get('progress') or 35)
+    elif status_value == 'failed':
+        progress = int(report.get('progress') or 100)
+    else:
+        progress = int(report.get('progress') or 100)
+
     return JsonResponse({
         'id': task_id,
-        'status': 'completed',
-        'progress': 100,
-        'message': 'Analysis completed successfully',
+        'status': status_value,
+        'progress': progress,
+        'message': (
+            'Analysis completed successfully'
+            if status_value == 'completed'
+            else 'Analysis is still processing'
+            if status_value == 'processing'
+            else 'Analysis failed'
+        ),
         'result_data': {
             'report_id': report_id,
+            'report_status': status_value,
         },
     })
 

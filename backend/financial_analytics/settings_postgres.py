@@ -102,7 +102,7 @@ AUTH_PASSWORD_VALIDATORS = [
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
-USE_TZ = False  # Disable timezone support to use system local time
+USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = '/static/'
@@ -157,7 +157,7 @@ OPENAI_QUOTA_CHECK_INTERVAL = int(os.environ.get('OPENAI_QUOTA_CHECK_INTERVAL', 
 OPENAI_DAILY_QUOTA_LIMIT = int(os.environ.get('OPENAI_DAILY_QUOTA_LIMIT', '1000'))  # daily API call limit
 
 # AI Model Configuration
-OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-3.5-turbo')
+OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
 OPENAI_MAX_TOKENS = int(os.environ.get('OPENAI_MAX_TOKENS', '800'))
 OPENAI_TEMPERATURE = float(os.environ.get('OPENAI_TEMPERATURE', '0.7'))
 

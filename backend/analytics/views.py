@@ -3,6 +3,7 @@ import uuid
 import time
 import os
 import io
+import logging
 from datetime import datetime, timedelta
 from django.utils import timezone
 from django.http import JsonResponse, HttpResponse
@@ -28,44 +29,30 @@ from openpyxl.styles import Font, Alignment
 
 from .services.dynamic_report_builder import build_dynamic_report_sections, build_report_context
 from .services.report_prompt_registry import get_report_prompt_registry
+from .services.report_store import get_report as get_persisted_report
+from .services.report_store import list_report_ids
+from .services.report_store import list_reports as list_persisted_reports
+from .services.report_store import save_report as save_persisted_report
+from .services.report_store import update_report as update_persisted_report
 
-# Simple in-memory storage for testing
-GLOBAL_REPORTS = {}
+logger = logging.getLogger(__name__)
 
 REPORT_TEMPLATES = get_report_prompt_registry().get_templates()
 
 def get_global_reports():
-    """Get global reports (handles module reloading issues)"""
-    global GLOBAL_REPORTS
-    return GLOBAL_REPORTS
+    """Deprecated compatibility shim for older callers."""
+    return {}
 
 def add_global_report(report_id, report_data):
-    """Add report to global storage (handles module reloading issues)"""
-    global GLOBAL_REPORTS
-    GLOBAL_REPORTS[report_id] = report_data
-    print(f"DEBUG: Added to global storage: {report_id}")
+    """Deprecated compatibility shim that persists the report instead."""
+    save_persisted_report(str(report_id), report_data)
+    logger.debug("Persisted report via add_global_report shim: %s", report_id)
 
 
 def update_stored_report(report_id, updates, request=None):
-    """Update an existing report in session and global storage."""
-    global GLOBAL_REPORTS
-    report_id = str(report_id)
-    updated = False
-
-    if request is not None and 'reports' in request.session:
-        for index, report in enumerate(request.session['reports']):
-            if str(report.get('id')) == report_id:
-                report.update(updates)
-                request.session['reports'][index] = report
-                request.session.modified = True
-                updated = True
-                break
-
-    if report_id in GLOBAL_REPORTS:
-        GLOBAL_REPORTS[report_id].update(updates)
-        updated = True
-
-    return updated
+    """Update an existing report in persistent storage."""
+    updated = update_persisted_report(str(report_id), updates, request=request)
+    return bool(updated)
 
 
 def get_openai_api_key():
@@ -431,21 +418,8 @@ def simple_custom_prompt_view(request):
         
         if not report_id or not custom_prompt:
             return JsonResponse({'error': 'report_id and prompt are required'}, status=400)
-        
-        # Find report in session or global storage
-        report = None
-        if 'reports' in request.session:
-            for r in request.session['reports']:
-                if r['id'] == report_id:
-                    report = r
-                    break
-        
-        if not report:
-            for r in GLOBAL_REPORTS.values():
-                if r['id'] == report_id:
-                    report = r
-                    break
-        
+
+        report = get_persisted_report(str(report_id))
         if not report:
             return JsonResponse({'error': 'Report not found'}, status=404)
         
@@ -454,7 +428,7 @@ def simple_custom_prompt_view(request):
         if not original_json:
             return JsonResponse({'error': 'Original JSON data not found in report'}, status=400)
         
-        print(f"DEBUG: Generating custom analysis with prompt: {custom_prompt[:100]}...")
+        logger.debug("Generating custom analysis with prompt: %s...", custom_prompt[:100])
         
         # Generate analysis using custom prompt
         try:
@@ -471,7 +445,7 @@ def simple_custom_prompt_view(request):
                 'user_prompt': custom_prompt
             })
             
-            print(f"DEBUG: Custom analysis result: {analysis_result}")
+            logger.debug("Custom analysis result: %s", analysis_result)
             
             if analysis_result and analysis_result.get('success'):
                 return JsonResponse({
@@ -487,7 +461,7 @@ def simple_custom_prompt_view(request):
                 }, status=500)
                 
         except Exception as e:
-            print(f"DEBUG: Exception in custom analysis: {e}")
+            logger.debug("Exception in custom analysis: %s", e)
             return JsonResponse({
                 'success': False,
                 'error': str(e)
@@ -523,7 +497,7 @@ def simple_upload_view(request):
         
         # Read and parse JSON
         file_content = uploaded_file.read().decode('utf-8')
-        print(f"DEBUG: File content preview: {file_content[:200]}...")
+        logger.debug("File content preview: %s...", file_content[:200])
         json_data = json.loads(file_content)
 
         if json_data is None:
@@ -535,10 +509,6 @@ def simple_upload_view(request):
         # Create a proper report structure with AI analysis
         report_id = str(uuid.uuid4())
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Store in session for persistence (simple approach)
-        if 'reports' not in request.session:
-            request.session['reports'] = []
         
         ai_analysis = perform_initial_ai_analysis(json_data)
 
@@ -587,19 +557,9 @@ def simple_upload_view(request):
         # Add AI error message if it exists
         if ai_error_msg:
             report_data['ai_error'] = ai_error_msg
-        
-        # Add to session
-        request.session['reports'].append(report_data)
-        request.session.modified = True
-        
-        # Also store in global memory for fallback
-        add_global_report(report_id, report_data)
-        
-        # Debug output
-        print(f"DEBUG: Added report to session. Total reports: {len(request.session['reports'])}")
-        print(f"DEBUG: Session key: {request.session.session_key}")
-        print(f"DEBUG: Report ID: {report_id}")
-        print(f"DEBUG: Global reports count: {len(GLOBAL_REPORTS)}")
+
+        save_persisted_report(report_id, report_data, request=request)
+        logger.debug("Persisted simple upload report: %s", report_id)
         
         # Create response with all report data
         response_data = {
@@ -619,11 +579,11 @@ def simple_upload_view(request):
         return JsonResponse(response_data)
         
     except json.JSONDecodeError as e:
-        print(f"DEBUG: JSON decode error: {str(e)}")
-        print(f"DEBUG: File content that failed: {file_content[:500]}...")
+        logger.debug("JSON decode error: %s", e)
+        logger.debug("File content that failed: %s...", file_content[:500])
         return JsonResponse({'error': f'Invalid JSON file format: {str(e)}'}, status=400)
     except Exception as e:
-        print(f"DEBUG: General error: {str(e)}")
+        logger.debug("General error in simple_upload_view: %s", e)
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -638,9 +598,9 @@ class FinancialDataUploadView(APIView):
         """Upload and process financial data file"""
         try:
             # Debug: Check if user is authenticated
-            print(f"User authenticated: {request.user.is_authenticated}")
-            print(f"User: {request.user}")
-            print(f"Session key: {request.session.session_key}")
+            logger.debug("User authenticated: %s", request.user.is_authenticated)
+            logger.debug("User: %s", request.user)
+            logger.debug("Session key: %s", request.session.session_key)
             
             # Validate request data
             request_serializer = FileUploadRequestSerializer(data=request.data)
@@ -1064,22 +1024,7 @@ def analyze_direct_data(request):
 def get_insights(request, report_id):
     """Get AI insights for a specific report section"""
     try:
-        # First try to find report in session/global storage (simple upload system)
-        report = None
-        session_reports = request.session.get('reports', [])
-        
-        for r in session_reports:
-            if r.get('id') == report_id:
-                report = r
-                break
-        
-        if not report:
-            global_reports = get_global_reports()
-            for global_id, global_report in global_reports.items():
-                if str(global_id) == str(report_id):
-                    report = global_report
-                    break
-        
+        report = get_persisted_report(str(report_id))
         if report:
             # Simple upload system - return existing analysis
             return Response({
@@ -1118,8 +1063,6 @@ def get_insights(request, report_id):
 def regenerate_insights(request, report_id):
     """Regenerate AI insights for a report"""
     try:
-        from .services.report_store import get_report, update_report
-
         report_options = {}
         if hasattr(request, 'data') and isinstance(request.data, dict):
             report_options = request.data.get('report_options') or {}
@@ -1131,7 +1074,7 @@ def regenerate_insights(request, report_id):
             except json.JSONDecodeError:
                 report_options = {}
 
-        report = get_report(str(report_id))
+        report = get_persisted_report(str(report_id))
 
         if report:
             original_json = report.get('metadata', {}).get('original_json')
@@ -1181,42 +1124,13 @@ def regenerate_insights(request, report_id):
             status_code = status.HTTP_402_PAYMENT_REQUIRED if error_msg and 'quota' in error_msg.lower() else status.HTTP_503_SERVICE_UNAVAILABLE
             return Response({'error': error_msg or 'AI regeneration failed'}, status=status_code)
         
-        # If no report found, try to provide fallback
-        global_reports = get_global_reports()
-        if global_reports:
-            # Return first available report as fallback
-            fallback_report = list(global_reports.values())[0]
-            print(f"DEBUG: Regenerate insights - Providing fallback report: {fallback_report.get('id')}")
-            
-            # Try to regenerate insights for fallback report
-            fallback_json = fallback_report.get('metadata', {}).get('original_json')
-            if fallback_json:
-                new_analysis = perform_initial_ai_analysis(fallback_json)
-                return Response({
-                    'success': True,
-                    'insights': new_analysis,
-                    'fallback': True,
-                    'original_request_id': report_id,
-                    'fallback_report_id': fallback_report.get('id'),
-                    'message': f'Report {report_id} not found. Regenerating insights for available report instead.'
-                })
-            else:
-                return Response({
-                    'success': True,
-                    'insights': fallback_report.get('ai_analysis', {}),
-                    'fallback': True,
-                    'original_request_id': report_id,
-                    'fallback_report_id': fallback_report.get('id'),
-                    'message': f'Report {report_id} not found. Using existing insights for available report.'
-                })
-        else:
-            return Response(
-                {'error': 'Report not found', 'message': 'No reports available in system. Please upload a financial data file first.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        return Response(
+            {'error': 'Report not found', 'message': 'No matching persisted report was found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
         
     except Exception as e:
-        print(f"DEBUG: Regenerate insights error: {e}")
+        logger.debug("Regenerate insights error: %s", e)
         return Response(
             {'error': 'Insight regeneration failed', 'message': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -1293,33 +1207,18 @@ class CustomReportView(APIView):
 def simple_reports_view(request):
     """Simple reports view - returns stored reports"""
     try:
-        
-        # Try session first, then fallback to global
-        session_reports = request.session.get('reports', [])
-        global_reports = list(get_global_reports().values())
-        
-        # Use session reports if available, otherwise global
-        reports = session_reports if session_reports else global_reports
-        
-        print(f"DEBUG: Session reports: {len(session_reports)}")
-        print(f"DEBUG: Global reports: {len(global_reports)}")
-        print(f"DEBUG: Session key: {request.session.session_key}")
-        print(f"DEBUG: Session data keys: {list(request.session.keys())}")
-        print(f"DEBUG: Using reports from: {'session' if session_reports else 'global'}")
+        reports = list_persisted_reports(request)
         
         return JsonResponse({
             'results': reports,
             'count': len(reports),
-            'session_key': request.session.session_key,
             'debug': {
-                'session_keys': list(request.session.keys()),
-                'session_reports_count': len(session_reports),
-                'global_reports_count': len(global_reports),
-                'source': 'session' if session_reports else 'global'
+                'report_ids': [str(report.get('id')) for report in reports if isinstance(report, dict)],
+                'source': 'database'
             }
         })
     except Exception as e:
-        print(f"DEBUG: Error in simple_reports_view: {e}")
+        logger.debug("Error in simple_reports_view: %s", e)
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -1347,92 +1246,22 @@ def simple_task_status_view(request, task_id):
 def simple_report_detail_view(request, report_id):
     """Simple report detail view"""
     try:
-        # Try session first, then fallback to global
-        session_reports = request.session.get('reports', [])
-        
-        print(f"DEBUG: Looking for report ID: {report_id}")
-        print(f"DEBUG: Session reports available: {[r.get('id') for r in session_reports]}")
-        print(f"DEBUG: Global reports available: {list(GLOBAL_REPORTS.keys())}")
-        
-        report = None
-        source = None
-        
-        # First try session
-        for r in session_reports:
-            if str(r.get('id')) == str(report_id):
-                report = r
-                source = 'session'
-                break
-        
-        # If not found in session, try global
+        logger.debug("Looking for report ID: %s", report_id)
+        report = get_persisted_report(str(report_id))
         if not report:
-            global_reports = get_global_reports()
-            for global_id, global_report in global_reports.items():
-                if str(global_id) == str(report_id):
-                    report = global_report
-                    source = 'global'
-                    print(f"DEBUG: Found report in global storage with ID match: {global_id}")
-                    break
-        
-        # If still not found, try database as fallback
-        if not report:
-            try:
-                from .models import FinancialDataSet
-                financial_dataset = FinancialDataSet.objects.filter(id=report_id).first()
-                if financial_dataset:
-                    report = {
-                        'id': str(financial_dataset.id),
-                        'filename': financial_dataset.filename,
-                        'data_summary': financial_dataset.data_summary,
-                        'bank_name': financial_dataset.bank_name,
-                        'data_period': financial_dataset.data_period,
-                        'ai_analysis': financial_dataset.ai_analysis,
-                        'metadata': financial_dataset.metadata
-                    }
-                    source = 'database'
-                    print(f"DEBUG: Found report in database: {report_id}")
-                else:
-                    print(f"DEBUG: Report not found in database either: {report_id}")
-            except Exception as e:
-                print(f"DEBUG: Database query failed: {e}")
-        
-        if not report:
-            print(f"DEBUG: Report not found: {report_id}")
-            
-            # Try to provide a fallback from available reports
-            global_reports = get_global_reports()
-            if global_reports:
-                # Return the first available report as fallback
-                fallback_report = list(global_reports.values())[0]
-                print(f"DEBUG: Providing fallback report: {fallback_report.get('id')}")
-                return JsonResponse({
-                    'report': fallback_report,
-                    'fallback': True,
-                    'original_request_id': report_id,
-                    'message': f'Report {report_id} not found. Showing available report instead.',
-                    'debug': {
-                        'session_reports': len(session_reports),
-                        'global_reports': len(global_reports),
-                        'available_ids': list(global_reports.keys())
-                    }
-                })
-            else:
-                return JsonResponse({
-                    'error': 'Report not found', 
-                    'report_id': report_id,
-                    'message': 'No reports available in the system. Please upload a financial data file first.',
-                    'debug': {
-                        'session_reports': len(session_reports),
-                        'global_reports': len(GLOBAL_REPORTS),
-                        'available_session_ids': [r.get('id') for r in session_reports],
-                        'available_global_ids': list(GLOBAL_REPORTS.keys())
-                    }
-                }, status=404)
-        
-        print(f"DEBUG: Found report: {report.get('id')} from {source}")
+            return JsonResponse({
+                'error': 'Report not found',
+                'report_id': report_id,
+                'message': 'No matching persisted report was found.',
+                'debug': {
+                    'available_ids': list_report_ids(),
+                    'source': 'database'
+                }
+            }, status=404)
+
         return JsonResponse(report)
     except Exception as e:
-        print(f"DEBUG: Error in simple_report_detail_view: {e}")
+        logger.debug("Error in simple_report_detail_view: %s", e)
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -1441,67 +1270,21 @@ def simple_report_detail_view(request, report_id):
 def simple_export_view(request, report_id):
     """Simple export view"""
     try:
-        report = None
-        source = None
-        
-        print(f"DEBUG: Export - Looking for report ID: {report_id}")
-        
-        # First try session storage (primary storage location)
-        reports = request.session.get('reports', [])
-        print(f"DEBUG: Export - Session key: {request.session.session_key}")
-        print(f"DEBUG: Export - Session reports count: {len(reports)}")
-        print(f"DEBUG: Export - Session report IDs: {[r.get('id') for r in reports]}")
-        
-        for r in reports:
-            if str(r.get('id')) == str(report_id):
-                report = r
-                source = 'session'
-                print(f"DEBUG: Export - Found report in session: {report_id}")
-                break
-        
-        # If not found in session, try global storage
+        logger.debug("Export - looking for report ID: %s", report_id)
+        report = get_persisted_report(str(report_id))
         if not report:
-            global_reports = get_global_reports()
-            print(f"DEBUG: Export - Global reports count: {len(global_reports)}")
-            print(f"DEBUG: Export - Global report IDs: {list(global_reports.keys())[:3]}")
-            
-            for global_id, global_report in global_reports.items():
-                if str(global_id) == str(report_id):
-                    report = global_report
-                    source = 'global'
-                    print(f"DEBUG: Export - Found report in global storage: {report_id}")
-                    break
-        
-        if not report:
-            print(f"DEBUG: Export - Report not found in session or global storage: {report_id}")
-            
-            # Try to provide a fallback from available reports in session
-            if reports:
-                # Return first available report from session as fallback
-                fallback_report = reports[0]
-                print(f"DEBUG: Export - Providing fallback report from session: {fallback_report.get('id')}")
-                report = fallback_report
-                source = 'session_fallback'
-            elif global_reports:
-                # Return first available report from global as fallback
-                fallback_report = list(global_reports.values())[0]
-                print(f"DEBUG: Export - Providing fallback report from global: {fallback_report.get('id')}")
-                report = fallback_report
-                source = 'global_fallback'
-            else:
-                return JsonResponse({
-                    'error': 'Report not found', 
-                    'report_id': report_id,
-                    'message': 'No reports available in the system. Please upload a financial data file first.',
-                    'debug': {
-                        'global_reports_count': len(get_global_reports()),
-                        'session_reports_count': len(request.session.get('reports', [])),
-                        'available_global_ids': list(get_global_reports().keys())
-                    }
-                }, status=404)
-        
-        print(f"DEBUG: Export - Report keys: {list(report.keys())}")
-        print(f"DEBUG: Export - Report data type: {type(report)}")
+            return JsonResponse({
+                'error': 'Report not found',
+                'report_id': report_id,
+                'message': 'No matching persisted report was found.',
+                'debug': {
+                    'available_ids': list_report_ids(),
+                    'source': 'database'
+                }
+            }, status=404)
+
+        logger.debug("Export - report keys: %s", list(report.keys()))
+        logger.debug("Export - report data type: %s", type(report))
         
         # Create export data
         try:
@@ -1515,9 +1298,9 @@ def simple_export_view(request, report_id):
                 'metadata': report.get('metadata'),
                 'export_timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
-            print(f"DEBUG: Export - Export data created successfully")
+            logger.debug("Export - export data created successfully")
         except Exception as e:
-            print(f"DEBUG: Export - Error creating export data: {e}")
+            logger.debug("Export - error creating export data: %s", e)
             return JsonResponse({'error': f'Export data creation failed: {str(e)}'}, status=500)
         
         format = request.GET.get('format', 'json')
@@ -1609,22 +1392,7 @@ def generate_comprehensive_report(request, report_id):
         template_type = report_options.get('template', 'custom')
         format_type = report_options.get('output_format', 'json')
         
-        # Find report in session or global storage
-        report = None
-        session_reports = request.session.get('reports', [])
-        
-        for r in session_reports:
-            if r.get('id') == report_id:
-                report = r
-                break
-        
-        if not report:
-            global_reports = get_global_reports()
-            for global_id, global_report in global_reports.items():
-                if str(global_id) == str(report_id):
-                    report = global_report
-                    break
-        
+        report = get_persisted_report(str(report_id))
         if not report:
             return JsonResponse({'error': 'Report not found'}, status=404)
         
@@ -1671,22 +1439,7 @@ def preview_report(request, report_id):
     """Preview report before generation"""
     try:
         registry = get_report_prompt_registry()
-        # Find report
-        report = None
-        session_reports = request.session.get('reports', [])
-        
-        for r in session_reports:
-            if r.get('id') == report_id:
-                report = r
-                break
-        
-        if not report:
-            global_reports = get_global_reports()
-            for global_id, global_report in global_reports.items():
-                if str(global_id) == str(report_id):
-                    report = global_report
-                    break
-        
+        report = get_persisted_report(str(report_id))
         if not report:
             return JsonResponse({'error': 'Report not found'}, status=404)
         
@@ -1943,20 +1696,7 @@ def simple_custom_report_view(request, report_id=None):
         if not report_id:
             return JsonResponse({'error': 'Report ID is required'}, status=400)
         
-        # Find report in session or global storage
-        report = None
-        if 'reports' in request.session:
-            for r in request.session['reports']:
-                if r['id'] == report_id:
-                    report = r
-                    break
-        
-        if not report:
-            for r in GLOBAL_REPORTS.values():
-                if r['id'] == report_id:
-                    report = r
-                    break
-        
+        report = get_persisted_report(str(report_id))
         if not report:
             return JsonResponse({'error': 'Report not found'}, status=404)
         
@@ -1965,7 +1705,7 @@ def simple_custom_report_view(request, report_id=None):
         if not original_json:
             return JsonResponse({'error': 'Original JSON data not found in report'}, status=400)
         
-        print(f"DEBUG: Generating custom analysis with prompt: {prompt[:100]}...")
+        logger.debug("Generating custom analysis with prompt: %s...", prompt[:100])
         
         # Generate analysis using custom prompt
         try:
@@ -2016,7 +1756,7 @@ def simple_custom_report_view(request, report_id=None):
             }, status=500)
                 
         except Exception as e:
-            print(f"DEBUG: Exception in custom analysis: {e}")
+            logger.debug("Exception in custom analysis: %s", e)
             return JsonResponse({
                 'success': False,
                 'error': str(e)
@@ -2025,7 +1765,7 @@ def simple_custom_report_view(request, report_id=None):
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON in request body'}, status=400)
     except Exception as e:
-        print(f"DEBUG: Custom report error: {e}")
+        logger.debug("Custom report error: %s", e)
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -2067,11 +1807,11 @@ def transform_complex_json(json_data):
             'market_share': 10  # Default value
         }
         
-        print(f"DEBUG: Transformed data sample: {str(transformed)[:200]}")
+        logger.debug("Transformed data sample: %s", str(transformed)[:200])
         return transformed
         
     except Exception as e:
-        print(f"DEBUG: Error transforming JSON: {e}")
+        logger.debug("Error transforming JSON: %s", e)
         # Return default structure if transformation fails
         return {
             'bank_name': 'Financial Institution',
@@ -2188,15 +1928,15 @@ def generate_ai_financial_analysis(prompt, financial_data, report):
         if ai_response and ai_response.get('success'):
             custom_report['sections'] = ai_response.get('sections', [])
             custom_report['ai_enhanced'] = True
-            print(f"DEBUG: Generated comprehensive AI analysis for: {prompt}")
+            logger.debug("Generated comprehensive AI analysis for: %s", prompt)
         else:
             # Fallback to template-based analysis
             custom_report['sections'] = generate_template_based_analysis(prompt, financial_data, bank_name, data_period)
             custom_report['ai_enhanced'] = False
-            print(f"DEBUG: Used template-based analysis for: {prompt}")
+            logger.debug("Used template-based analysis for: %s", prompt)
             
     except Exception as e:
-        print(f"DEBUG: AI analysis failed, using template: {e}")
+        logger.debug("AI analysis failed, using template: %s", e)
         # Fallback to template-based analysis
         custom_report['sections'] = generate_template_based_analysis(prompt, financial_data, bank_name, data_period)
         custom_report['ai_enhanced'] = False
@@ -2211,7 +1951,7 @@ def generate_comprehensive_ai_analysis(context):
 
         api_key = get_openai_api_key()
         if not api_key:
-            print("DEBUG: OpenAI API key not found")
+            logger.debug("OpenAI API key not found")
             return {'success': False, 'error': 'OpenAI API key not configured. Set OPENAI_API_KEY in backend/.env and restart the server.'}
 
         registry = get_report_prompt_registry()
@@ -2277,7 +2017,12 @@ def generate_comprehensive_ai_analysis(context):
         model = getattr(settings, 'OPENAI_MODEL', 'gpt-4o-mini')
         max_tokens = min(getattr(settings, 'OPENAI_MAX_TOKENS', 4096), 4096)
         temperature = getattr(settings, 'OPENAI_TEMPERATURE', 0.4)
-        print(f"DEBUG: OpenAI request model={model} key_set={bool(api_key)} key_prefix={api_key[:8]}...")
+        logger.debug(
+            "OpenAI request model=%s key_set=%s key_prefix=%s...",
+            model,
+            bool(api_key),
+            api_key[:8],
+        )
 
         client = openai.OpenAI(api_key=api_key)
 
@@ -2351,7 +2096,7 @@ def generate_comprehensive_ai_analysis(context):
         return {'success': False, 'error': 'AI returned an empty report. Please refine your prompt and try again.'}
 
     except Exception as e:
-        print(f"DEBUG: OpenAI API error: {e}")
+        logger.debug("OpenAI API error: %s", e)
         fallback_sections = build_dynamic_report_sections(
             (context.get('report_options') or {}).get('sections', []),
             context.get('financial_data', {}),
@@ -2443,16 +2188,16 @@ def test_openai_view(request):
         from django.http import JsonResponse
         
         data = json.loads(request.body)
-        print(f"DEBUG: Test OpenAI endpoint called with data: {data}")
+        logger.debug("Test OpenAI endpoint called with data: %s", data)
         
         # Test comprehensive analysis
         result = generate_comprehensive_ai_analysis(data)
-        print(f"DEBUG: OpenAI test result: {result}")
+        logger.debug("OpenAI test result: %s", result)
         
         return JsonResponse(result)
         
     except Exception as e:
-        print(f"DEBUG: OpenAI test error: {e}")
+        logger.debug("OpenAI test error: %s", e)
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
