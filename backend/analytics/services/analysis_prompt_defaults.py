@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from .report_prompt_registry import DEFAULT_REPORT_PROMPT_CONFIG
 
@@ -22,6 +23,15 @@ def _load_capital_adequacy_default() -> str:
     return "Analyze capital adequacy using the provided financial dataset."
 
 
+def _section_block(section_key: str, title: str, instruction: str) -> str:
+    return (
+        f"[SECTION:{section_key}]\n"
+        f"## {title}\n"
+        f"{instruction.strip()}\n"
+        f"[/SECTION]"
+    )
+
+
 def _build_master_prompt(
     *,
     title: str,
@@ -31,12 +41,20 @@ def _build_master_prompt(
     analysis_focus: list[str],
     calculations: list[str],
     validation_rules: list[str],
-    report_sections: list[str],
+    report_sections: list[dict[str, str]],
 ) -> str:
     focus_block = "\n".join(f"- {item}" for item in analysis_focus)
     calculation_block = "\n".join(f"- {item}" for item in calculations)
     validation_block = "\n".join(f"- {item}" for item in validation_rules)
-    section_block = "\n".join(f"- {item}" for item in report_sections)
+    section_blocks = "\n\n".join(
+        _section_block(
+            str(item["key"]).strip(),
+            str(item["title"]).strip(),
+            str(item["instruction"]).strip(),
+        )
+        for item in report_sections
+        if item.get("key") and item.get("title") and item.get("instruction")
+    )
 
     return f"""
 # {title}
@@ -72,7 +90,9 @@ Use the uploaded dataset as the only source of truth. Do not infer values that a
 - Keep recommendations practical, prioritized, and tied to the data.
 
 ## Report Structure
-{section_block}
+Generate every section below. Each marked block is the exact prompt module for that report section.
+
+{section_blocks}
 
 ## Conclusion Rule
 Conclude with a clear overall assessment of the selected dataset type, the major risks, and the highest-priority strategic actions.
@@ -118,13 +138,54 @@ WACC_ANALYSIS_PROMPT = _build_master_prompt(
         "Do not use unrelated sections such as money market or instrument valuation metrics unless they directly support WACC analysis.",
     ],
     report_sections=[
-        "Executive Summary",
-        "Capital Structure and Cost Drivers",
-        "WACC Calculation and Interpretation",
-        "Sensitivity and Benchmark Analysis",
-        "Risk, Return, and Financing Efficiency",
-        "Strategic Recommendations",
-        "Conclusion",
+        {
+            "key": "executive_summary",
+            "title": "Executive Summary",
+            "instruction": (
+                "Provide a concise board-ready overview of the WACC position, capital structure posture, "
+                "key cost drivers, and the most important financing implications from the dataset."
+            ),
+        },
+        {
+            "key": "wacc_analysis",
+            "title": "WACC Analysis",
+            "instruction": (
+                "Explain cost of equity, cost of debt, tax effects, capital weights, and the resulting WACC. "
+                "Show the calculation logic using only dataset inputs and interpret what is driving the result."
+            ),
+        },
+        {
+            "key": "financial_ratios",
+            "title": "Financial Ratios",
+            "instruction": (
+                "Interpret leverage, coverage, profitability, and efficiency ratios that explain the capital "
+                "structure and financing cost. Tie each ratio back to WACC implications."
+            ),
+        },
+        {
+            "key": "risk_assessment",
+            "title": "Risk Assessment",
+            "instruction": (
+                "Evaluate financing, leverage, refinancing, interest-rate, and tax-related risks that affect "
+                "the cost of capital. Rank severity and note early-warning indicators present in the data."
+            ),
+        },
+        {
+            "key": "benchmark_comparison",
+            "title": "Benchmark Comparison",
+            "instruction": (
+                "Compare the observed WACC and capital structure signals with any peer, historical, or "
+                "hurdle-rate benchmarks available in the dataset. State clearly when benchmarks are missing."
+            ),
+        },
+        {
+            "key": "recommendations",
+            "title": "Recommendations",
+            "instruction": (
+                "Provide prioritized strategic recommendations for capital deployment, refinancing, leverage "
+                "management, and hurdle-rate discipline, each tied to evidence in the dataset."
+            ),
+        },
     ],
 )
 
@@ -165,13 +226,54 @@ MONEY_MARKET_ANALYSIS_PROMPT = _build_master_prompt(
         "Do not mix in WACC or financial instruments analysis unless the data directly supports a money market conclusion.",
     ],
     report_sections=[
-        "Executive Summary",
-        "Money Market Conditions",
-        "Rate and Liquidity Analysis",
-        "Market Performance and Short-Term Funding Risk",
-        "Trend Interpretation",
-        "Strategic Recommendations",
-        "Conclusion",
+        {
+            "key": "executive_summary",
+            "title": "Executive Summary",
+            "instruction": (
+                "Summarize short-term funding conditions, the dominant rate/liquidity signals, and the key "
+                "implications for money-market strategy from the dataset."
+            ),
+        },
+        {
+            "key": "money_market_analysis",
+            "title": "Money Market Analysis",
+            "instruction": (
+                "Analyze Treasury Bills, commercial paper, certificates of deposit, interbank rates, and repo "
+                "rates. Explain what the instruments and spreads say about funding conditions."
+            ),
+        },
+        {
+            "key": "market_trends",
+            "title": "Market Trends",
+            "instruction": (
+                "Interpret rate and liquidity trends over the available period. Identify whether conditions "
+                "are easing, tightening, or stable and explain the drivers present in the data."
+            ),
+        },
+        {
+            "key": "risk_assessment",
+            "title": "Risk Assessment",
+            "instruction": (
+                "Assess short-term funding, liquidity, counterparty, and rate risks. Highlight early-warning "
+                "signals and the severity of each risk using only the uploaded evidence."
+            ),
+        },
+        {
+            "key": "benchmark_comparison",
+            "title": "Benchmark Comparison",
+            "instruction": (
+                "Compare observed money-market rates and spreads with any historical or reference benchmarks "
+                "in the dataset. Call out gaps where benchmark data is unavailable."
+            ),
+        },
+        {
+            "key": "recommendations",
+            "title": "Recommendations",
+            "instruction": (
+                "Provide prioritized recommendations for short-term funding, liquidity positioning, and "
+                "money-market strategy, each linked to dataset evidence."
+            ),
+        },
     ],
 )
 
@@ -211,18 +313,59 @@ FINANCIAL_INSTRUMENTS_ANALYSIS_PROMPT = _build_master_prompt(
         "Do not fabricate market prices, returns, or risk measures.",
     ],
     report_sections=[
-        "Executive Summary",
-        "Portfolio and Instrument Overview",
-        "Valuation and Return Analysis",
-        "Risk, Volatility, and Market Exposure",
-        "Comparative and Trend Analysis",
-        "Strategic Recommendations",
-        "Conclusion",
+        {
+            "key": "executive_summary",
+            "title": "Executive Summary",
+            "instruction": (
+                "Provide a concise investment overview covering portfolio posture, valuation signals, "
+                "material risks, and the highest-priority findings from the instruments dataset."
+            ),
+        },
+        {
+            "key": "investment_analysis",
+            "title": "Investment Analysis",
+            "instruction": (
+                "Analyze bonds, equities, treasuries, derivatives, funds/ETFs, commodities, and FX exposures "
+                "present in the data. Interpret valuation, return, and portfolio implications."
+            ),
+        },
+        {
+            "key": "market_trends",
+            "title": "Market Trends",
+            "instruction": (
+                "Explain performance and market trends across instrument classes. Identify improving or "
+                "deteriorating patterns and what they imply for positioning."
+            ),
+        },
+        {
+            "key": "financial_ratios",
+            "title": "Financial Ratios",
+            "instruction": (
+                "Interpret available valuation, return, volatility, duration, and efficiency metrics. "
+                "Explain what each material ratio means for portfolio quality and risk."
+            ),
+        },
+        {
+            "key": "risk_assessment",
+            "title": "Risk Assessment",
+            "instruction": (
+                "Evaluate market, credit, liquidity, concentration, leverage, and FX risks across the "
+                "instrument set. Prioritize severity and mitigation implications from the data."
+            ),
+        },
+        {
+            "key": "recommendations",
+            "title": "Recommendations",
+            "instruction": (
+                "Provide prioritized portfolio and risk-management recommendations tied directly to the "
+                "instrument evidence in the dataset."
+            ),
+        },
     ],
 )
 
 
-def get_default_analysis_prompt_definitions() -> list[dict]:
+def get_default_analysis_prompt_definitions() -> list[dict[str, Any]]:
     """Return the built-in analysis prompts with metadata."""
     return [
         {
@@ -232,6 +375,7 @@ def get_default_analysis_prompt_definitions() -> list[dict]:
             "recommended_sections": [
                 "executive_summary",
                 "wacc_analysis",
+                "financial_ratios",
                 "risk_assessment",
                 "benchmark_comparison",
                 "recommendations",
@@ -246,6 +390,7 @@ def get_default_analysis_prompt_definitions() -> list[dict]:
                 "money_market_analysis",
                 "market_trends",
                 "risk_assessment",
+                "benchmark_comparison",
                 "recommendations",
             ],
         },
@@ -257,6 +402,7 @@ def get_default_analysis_prompt_definitions() -> list[dict]:
                 "executive_summary",
                 "investment_analysis",
                 "market_trends",
+                "financial_ratios",
                 "risk_assessment",
                 "recommendations",
             ],

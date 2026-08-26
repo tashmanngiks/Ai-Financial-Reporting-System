@@ -27,9 +27,13 @@ def _default_report_configuration() -> dict[str, Any]:
 
 
 def ensure_prompt_defaults() -> None:
-    """Create default prompt rows and configuration if missing."""
+    """Create default prompt rows and configuration if missing.
+
+    Also keeps `default_content` aligned with code defaults. Dataset prompts that
+    still lack `[SECTION:]` markers are upgraded so the split pane can decompose them.
+    """
     for definition in get_default_analysis_prompt_definitions():
-        AnalysisPrompt.objects.get_or_create(
+        prompt, created = AnalysisPrompt.objects.get_or_create(
             prompt_id=definition["prompt_id"],
             defaults={
                 "title": definition["title"],
@@ -38,6 +42,37 @@ def ensure_prompt_defaults() -> None:
                 "recommended_sections": definition["recommended_sections"],
             },
         )
+        if created:
+            continue
+
+        update_fields: list[str] = []
+        new_default = definition["content"]
+        if prompt.default_content != new_default:
+            # Upgrade live content when it was never customized, or when it cannot
+            # be decomposed into section modules yet.
+            uncustomized = (prompt.content or "").strip() == (prompt.default_content or "").strip()
+            missing_markers = "[SECTION:" not in (prompt.content or "")
+            if uncustomized or (
+                missing_markers
+                and prompt.prompt_id in {
+                    "wacc_analysis",
+                    "money_market_analysis",
+                    "financial_instruments_analysis",
+                }
+            ):
+                prompt.content = new_default
+                update_fields.append("content")
+            prompt.default_content = new_default
+            update_fields.append("default_content")
+
+        if prompt.recommended_sections != definition["recommended_sections"]:
+            prompt.recommended_sections = definition["recommended_sections"]
+            update_fields.append("recommended_sections")
+        if prompt.title != definition["title"]:
+            prompt.title = definition["title"]
+            update_fields.append("title")
+        if update_fields:
+            prompt.save(update_fields=[*update_fields, "updated_at"])
 
     defaults = _default_report_configuration()
     ReportConfiguration.objects.get_or_create(

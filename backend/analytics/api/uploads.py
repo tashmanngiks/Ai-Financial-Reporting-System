@@ -314,9 +314,9 @@ def simple_upload_view(request):
         )
 
         # Safety fallback: if decomposition didn't find a block for a section,
-        # use the existing active prompt-module text so editors are never empty.
+        # use the existing active prompt-module text / registry prompt so editors are never empty.
         try:
-            from ..services.prompt_module_store import get_prompt_module_for_section
+            from ..services.prompt_module_store import get_prompt_module_for_section, get_section_prompt_text
 
             for section_key in section_keys or []:
                 section_key = str(section_key).strip()
@@ -332,6 +332,11 @@ def simple_upload_view(request):
                         fallback_text.replace('{bank_name}', str(bank_name))
                         .replace('{data_period}', str(data_period))
                     )
+                if not fallback_text:
+                    fallback_text = get_section_prompt_text(
+                        section_key,
+                        {'bank_name': bank_name, 'data_period': data_period},
+                    )
                 if fallback_text:
                     section_prompt_overrides[section_key] = fallback_text
         except Exception:
@@ -346,7 +351,16 @@ def simple_upload_view(request):
                 parts.append(f"[SECTION:{section_key}]\n{(prompts.get(section_key) or '').strip()}\n[/SECTION]")
             return "\n\n".join(parts)
 
-        master_prompt = _compose_master_prompt_from_section_prompts(section_keys, section_prompt_overrides) or analysis_request_prompt
+        # Prefer the exact Dataset Analysis Prompt the user selected when it already
+        # contains section markers. Otherwise compose a marker document from extracts.
+        has_markers = bool(section_prompt_overrides) and any(
+            f'[SECTION:{k}]' in analysis_request_prompt for k in section_keys
+        )
+        if has_markers:
+            master_prompt = analysis_request_prompt
+        else:
+            composed = _compose_master_prompt_from_section_prompts(section_keys, section_prompt_overrides)
+            master_prompt = composed if composed.strip() else analysis_request_prompt
 
         processing_report_data = {
             'id': report_id,

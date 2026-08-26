@@ -165,6 +165,15 @@ def regenerate_report_section_view(request, report_id, section_key):
         return JsonResponse({'error': 'Original JSON data not found in report'}, status=400)
 
     sections = list(report.get('comprehensive_analysis') or [])
+    expected_section_keys = [
+        str(k).strip()
+        for k in (
+            (report.get('report_options') or {}).get('sections')
+            or (report.get('metadata') or {}).get('report_options', {}).get('sections')
+            or []
+        )
+        if str(k).strip()
+    ]
     section_index = None
     section_key_match = None
     if section_key.startswith('section_'):
@@ -184,6 +193,16 @@ def regenerate_report_section_view(request, report_id, section_key):
             existing_section = section
             section_key_match = key or title_key or f'section_{idx}'
             break
+
+    # Allow generating a section that was expected but missing from AI output.
+    if not existing_section and section_key in expected_section_keys:
+        section_key_match = section_key
+        existing_section = {
+            'section_key': section_key,
+            'title': section_key.replace('_', ' ').title(),
+            'content': {},
+        }
+
     if not existing_section:
         return JsonResponse({'error': 'Invalid section key for this report.'}, status=400)
 
@@ -209,8 +228,6 @@ def regenerate_report_section_view(request, report_id, section_key):
         related_sections = [str(item).strip() for item in (section_prompt_module.related_sections or [])]
         if section_key in related_sections or section_prompt_module.slug in {section_key, section_key.replace('_', '-')}:
             exact_module = section_prompt_module
-    if exact_module and (exact_module.prompt_text or '').strip() == edited_prompt:
-        return JsonResponse({'error': 'Prompt has not changed.'}, status=400)
 
     if not cache.add(lock_key, request_id, timeout=15 * 60):
         return JsonResponse({'error': 'Another regeneration is already running for this section.'}, status=409)

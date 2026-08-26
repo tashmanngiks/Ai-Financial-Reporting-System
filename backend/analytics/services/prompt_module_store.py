@@ -651,17 +651,49 @@ def decompose_master_prompt_to_section_prompts(
     title_variants: dict[str, list[str]] = {
         'executive_summary': ['Executive Summary'],
         'statistical_highlights': ['Statistical Highlights'],
-        'financial_ratios': ['Financial Ratios', 'Ratio Analysis'],
-        'wacc_analysis': ['WACC', 'Weighted Average Cost of Capital'],
-        'money_market_analysis': ['Money Market', 'Money Market Analysis'],
-        'investment_analysis': ['Financial Instruments', 'Investment Analysis'],
+        'financial_ratios': ['Financial Ratios', 'Ratio Analysis', 'Ratio Interpretation'],
+        'wacc_analysis': [
+            'WACC Analysis',
+            'WACC Calculation and Interpretation',
+            'Capital Structure and Cost Drivers',
+            'Weighted Average Cost of Capital',
+            'WACC',
+        ],
+        'money_market_analysis': [
+            'Money Market Analysis',
+            'Money Market Conditions',
+            'Rate and Liquidity Analysis',
+            'Money Market',
+        ],
+        'investment_analysis': [
+            'Investment Analysis',
+            'Portfolio and Instrument Overview',
+            'Valuation and Return Analysis',
+            'Financial Instruments',
+        ],
         'macroeconomic_indicators': ['Macroeconomic Indicators', 'Macro Indicators'],
         'country_risk_analysis': ['Country Risk', 'Sovereign Risk'],
-        'market_trends': ['Market Trends'],
-        'trend_analysis': ['Trend Analysis'],
-        'risk_assessment': ['Risk Analysis', 'Risk Assessment'],
-        'benchmark_comparison': ['Benchmark Comparison'],
-        'recommendations': ['Recommendations'],
+        'market_trends': [
+            'Market Trends',
+            'Market Performance and Short-Term Funding Risk',
+            'Comparative and Trend Analysis',
+        ],
+        'trend_analysis': ['Trend Analysis', 'Trend Interpretation'],
+        'risk_assessment': [
+            'Risk Assessment',
+            'Risk Analysis',
+            'Risk, Return, and Financing Efficiency',
+            'Risk, Volatility, and Market Exposure',
+        ],
+        'benchmark_comparison': [
+            'Benchmark Comparison',
+            'Sensitivity and Benchmark Analysis',
+        ],
+        'recommendations': [
+            'Recommendations',
+            'Strategic Recommendations',
+            'Conclusion',
+        ],
     }
 
     key_matches: list[tuple[int, str]] = []
