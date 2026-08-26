@@ -101,7 +101,12 @@
             </button>
           </div>
 
+          <div v-if="!drafts[pair.sectionKey]?.trim()" class="w-full border border-gray-200 rounded p-3 bg-gray-50 text-center">
+            <p class="text-xs text-gray-500 italic">Prompt unavailable for this section</p>
+            <p class="text-[10px] text-gray-400 mt-1">Section key: {{ pair.sectionKey }}</p>
+          </div>
           <textarea
+            v-else
             :id="`section-prompt-${pair.sectionKey}`"
             :name="`section_prompt_${pair.sectionKey}`"
             v-model="drafts[pair.sectionKey]"
@@ -124,7 +129,7 @@
           <h2 class="text-lg font-semibold text-gray-900">{{ reportTitle }}</h2>
           <p class="text-sm text-gray-500">
             {{ report?.bank_name || 'Financial Dataset' }}
-            · {{ report?.data_period || report?.metadata?.period || '' }}
+            · {{ report?.data_period || (report?.metadata as Record<string, unknown>)?.period || '' }}
           </p>
         </header>
 
@@ -222,6 +227,47 @@
     <p v-if="statusMessage" class="px-4 py-2 text-xs border-t shrink-0" :class="errorMessage ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'">
       {{ statusMessage }}
     </p>
+
+    <!-- Debug View Toggle -->
+    <button
+      type="button"
+      class="px-4 py-2 text-xs border-t bg-gray-100 hover:bg-gray-200 text-gray-700"
+      @click="showDebugView = !showDebugView"
+    >
+      {{ showDebugView ? 'Hide' : 'Show' }} Section Mapping Debug
+    </button>
+
+    <!-- Debug View -->
+    <div v-if="showDebugView" class="px-4 py-3 border-t bg-gray-50 text-xs overflow-y-auto max-h-64">
+      <div class="font-semibold mb-2">Section Mapping Validation</div>
+      <div v-if="Array.isArray(mappingValidation.issues) && mappingValidation.issues.length" class="text-red-600 mb-2">
+        <div class="font-medium">Issues:</div>
+        <ul class="list-disc pl-4">
+          <li v-for="(issue, idx) in mappingValidation.issues" :key="idx">{{ issue }}</li>
+        </ul>
+      </div>
+      <div class="text-green-600 mb-2">
+        Status: {{ mappingValidation.valid ? '✓ VALID' : '✗ INVALID' }}
+        ({{ mappingValidation.synchronized_count }}/{{ mappingValidation.total_sections }} synchronized)
+      </div>
+      <div class="space-y-1">
+        <div v-for="mapping in mappingValidation.mappings" :key="(mapping as SectionMapping).section_key"
+             class="p-1 rounded" :class="{
+               'bg-green-100': (mapping as SectionMapping).status === 'SYNCHRONIZED',
+               'bg-yellow-100': (mapping as SectionMapping).status === 'MISMATCH',
+               'bg-red-100': (mapping as SectionMapping).status === 'MISSING'
+             }">
+          <div class="font-medium">{{ (mapping as SectionMapping).section_title }}</div>
+          <div class="text-gray-600">Key: {{ (mapping as SectionMapping).section_key }}</div>
+          <div class="text-[10px]">
+            Master: {{ (mapping as SectionMapping).has_master_prompt ? '✓' : '✗' }} |
+            Dataset: {{ (mapping as SectionMapping).has_dataset_prompt ? '✓' : '✗' }} |
+            Editor: {{ (mapping as SectionMapping).has_editor_prompt ? '✓' : '✗' }} |
+            Report: {{ (mapping as SectionMapping).has_report_content ? '✓' : '✗' }}
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -272,6 +318,8 @@ const statusMessage = ref('')
 const errorMessage = ref('')
 const savingMasterPrompt = ref(false)
 const sectionStates = reactive<Record<string, { state: string; error: string }>>({})
+const showDebugView = ref(false)
+const mappingValidation = ref<Record<string, unknown>>({})
 
 const masterEditor = ref('')
 const syncingFromModules = ref(false)
@@ -298,10 +346,10 @@ function parseMasterPromptForKeys(text: string, keys: string[]) {
 
 function composeMasterFromDrafts(keys: string[], draftMap: Record<string, string>) {
   const parts: string[] = []
-  for (const k of keys || []) {
+  for (const k of keys) {
     const key = String(k).trim()
     if (!key) continue
-    const promptText = (draftMap[key] ?? '').replace(/\s+$/, '')
+    const promptText = String((draftMap as Record<string, string>)[key] ?? '').replace(/\s+$/, '')
     parts.push(`[SECTION:${key}]\n${promptText}\n[/SECTION]`)
   }
   return parts.join('\n\n')
@@ -309,7 +357,7 @@ function composeMasterFromDrafts(keys: string[], draftMap: Record<string, string
 
 const reportTitle = computed(
   () =>
-    report.value?.metadata?.title ||
+    (report.value?.metadata as Record<string, unknown>)?.title ||
     report.value?.filename ||
     'Generated Financial Report',
 )
@@ -317,19 +365,19 @@ const reportTitle = computed(
 function narrative(section: AnyRecord | null) {
   const c = section?.content
   if (typeof c === 'string') return c
-  if (c && typeof c === 'object') return c.content || ''
+  if (c && typeof c === 'object') return (c as Record<string, unknown>).content || ''
   return ''
 }
 
 function keyPointsOf(section: AnyRecord | null) {
   const c = section?.content
-  if (c && typeof c === 'object') return c.key_points || []
+  if (c && typeof c === 'object') return (c as Record<string, unknown>).key_points || []
   return []
 }
 
 function recommendationsOf(section: AnyRecord | null) {
   const c = section?.content
-  if (c && typeof c === 'object') return c.recommendations || []
+  if (c && typeof c === 'object') return (c as Record<string, unknown>).recommendations || []
   return []
 }
 
@@ -349,7 +397,8 @@ function formatTimestamp(value: string | null | undefined) {
 }
 
 function moduleForSection(sectionKey: string, section: AnyRecord | null) {
-  const byId = section?.trace?.prompt_module_id
+  const trace = section?.trace as Record<string, unknown> | null
+  const byId = trace?.prompt_module_id
   if (byId) {
     const found = modules.value.find((m) => String(m.id) === String(byId))
     if (found) return found
@@ -376,6 +425,73 @@ function moduleForSection(sectionKey: string, section: AnyRecord | null) {
   return nameMatch || null
 }
 
+interface SectionMapping {
+  section_key: string
+  section_title: string
+  section_order: number
+  has_master_prompt: boolean
+  has_dataset_prompt: boolean
+  has_editor_prompt: boolean
+  has_report_content: boolean
+  status: 'SYNCHRONIZED' | 'MISMATCH' | 'MISSING' | 'DUPLICATE'
+}
+
+function validateSectionMapping(): Record<string, unknown> {
+  const reportSections = Array.isArray(report.value?.comprehensive_analysis)
+    ? report.value?.comprehensive_analysis
+    : []
+  const sectionKeys = new Set<string>()
+  const mappings: SectionMapping[] = []
+  const issues: string[] = []
+
+  // Collect all section keys from report
+  reportSections.forEach((section: unknown, index: number) => {
+    const sectionRecord = section as Record<string, unknown>
+    const key = String(sectionRecord.section_key || sectionRecord.key || `section_${index}`)
+    if (sectionKeys.has(key)) {
+      issues.push(`Duplicate section key: ${key}`)
+    }
+    sectionKeys.add(key)
+
+    const title = String(sectionRecord.title || 'Untitled')
+    const content = sectionRecord.content as Record<string, unknown> | string | null
+    const hasContent = Boolean(content)
+
+    // Check if this section exists in master prompt
+    const hasMaster = masterEditor.value.includes(`[SECTION:${key}]`) ||
+                      masterEditor.value.toLowerCase().includes(title.toLowerCase())
+
+    // Check if this section exists in drafts
+    const hasEditor = Boolean((drafts as Record<string, string>)[key]?.trim())
+
+    mappings.push({
+      section_key: key,
+      section_title: title,
+      section_order: index,
+      has_master_prompt: hasMaster,
+      has_dataset_prompt: hasMaster, // Assuming same as master for now
+      has_editor_prompt: hasEditor,
+      has_report_content: hasContent,
+      status: (hasMaster && hasEditor && hasContent) ? 'SYNCHRONIZED' : 'MISMATCH'
+    })
+  })
+
+  // Check for orphan prompts in drafts
+  Object.keys(drafts as Record<string, string>).forEach(key => {
+    if (!sectionKeys.has(key) && (drafts as Record<string, string>)[key]?.trim()) {
+      issues.push(`Orphan prompt for section: ${key}`)
+    }
+  })
+
+  return {
+    valid: issues.length === 0,
+    issues,
+    mappings,
+    total_sections: reportSections.length,
+    synchronized_count: mappings.filter(m => m.status === 'SYNCHRONIZED').length
+  }
+}
+
 function normalizeSectionKey(value: string, fallback = 'section') {
   const normalized = String(value || fallback)
     .trim()
@@ -391,48 +507,52 @@ const pairedRows = computed<GeneratedPair[]>(() => {
     ? report.value?.comprehensive_analysis
     : []
   const generatedByKey = new Map<string, AnyRecord>()
-
-  // Use actual section keys from the report data as the primary source
-  generated.forEach((section, index) => {
-    // Priority 1: Use the actual section_key from the report data
-    const actualKey = section?.section_key || section?.key
-    if (actualKey && String(actualKey).trim()) {
-      const key = String(actualKey).trim()
-      if (generatedByKey.has(key)) {
-        generatedByKey.set(`${key}_${index}`, section)
-      } else {
-        generatedByKey.set(key, section)
-      }
+  generated.forEach((section: AnyRecord, index: number) => {
+    const explicitKey = section?.section_key || section?.key
+    let sectionKey = ''
+    if (explicitKey && String(explicitKey).trim()) {
+      sectionKey = String(explicitKey).trim()
     } else {
-      // Fallback: generate key from title if no section_key exists
-      const fallbackKey = normalizeSectionKey(section?.title || section?.heading || `section_${index}`)
-      const key = fallbackKey || `section_${index}`
-      if (generatedByKey.has(key)) {
-        generatedByKey.set(`${key}_${index}`, section)
-      } else {
-        generatedByKey.set(key, section)
-      }
+      const title = section?.title || section?.heading || `Section ${index + 1}`
+      sectionKey = normalizeSectionKey(String(title), `section_${index}`)
+    }
+    if (!generatedByKey.has(sectionKey)) {
+      generatedByKey.set(sectionKey, section)
     }
   })
 
-  // Order sections by their actual index in the report
-  const orderedKeys: string[] = Array.from(generatedByKey.keys())
+  const reportOptions = (report.value?.report_options || (report.value?.metadata as AnyRecord | undefined)?.report_options || {}) as AnyRecord
+  const expectedKeys = Array.isArray(reportOptions.sections)
+    ? reportOptions.sections.map((k: unknown) => String(k).trim()).filter(Boolean)
+    : []
 
-  return orderedKeys.map((sectionKey: string) => {
+  const orderedKeys: string[] = []
+  for (const key of expectedKeys) {
+    if (!orderedKeys.includes(key)) orderedKeys.push(key)
+  }
+  for (const key of generatedByKey.keys()) {
+    if (!orderedKeys.includes(key)) orderedKeys.push(key)
+  }
+
+  const keys = orderedKeys.length ? orderedKeys : [...generatedByKey.keys()]
+
+    return keys.map((sectionKey) => {
     const section = generatedByKey.get(sectionKey) || null
     const module = moduleForSection(sectionKey, section)
     const libraryTitle = normalizeSectionKey(sectionKey, 'section').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    const sectionTitle = section?.title ? String(section.title) : libraryTitle
+
     return {
       sectionKey,
       module,
-      promptTitle: module?.name || `${section?.title || libraryTitle} Prompt`,
-      reportTitle: section?.title || libraryTitle,
-      reportNarrative: narrative(section),
-      keyPoints: keyPointsOf(section),
-      recommendations: recommendationsOf(section),
-      trace: section?.trace || null,
+      promptTitle: module?.name || `${sectionTitle} Prompt`,
+      reportTitle: sectionTitle,
+      reportNarrative: String(narrative(section) || ''),
+      keyPoints: keyPointsOf(section) as unknown[],
+      recommendations: recommendationsOf(section) as unknown[],
+      trace: (section?.trace as AnyRecord | null) || null,
       missing: !section,
-    }
+    } satisfies GeneratedPair
   })
 })
 
@@ -457,7 +577,7 @@ function onDraftEdit(sectionKey: string) {
     // This is the bidirectional link: module edits -> master prompt.
     const keys = pairedRows.value.map((p) => p.sectionKey)
     syncingFromModules.value = true
-    masterEditor.value = composeMasterFromDrafts(keys, drafts)
+    masterEditor.value = composeMasterFromDrafts(keys, drafts as Record<string, string>)
     syncingFromModules.value = false
   } catch (error: unknown) {
     console.error('Error editing draft:', error)
@@ -514,12 +634,7 @@ function canRegenerate(pair: GeneratedPair) {
   if (!pair?.sectionKey) return false
   if (sectionState(pair.sectionKey) === 'REGENERATING') return false
   if (regenerating.value) return false
-
-  const prompt = (drafts[pair.sectionKey] || '').trim()
-  const baseline = (baselines[pair.sectionKey] || '').trim()
-
-  // Allow regeneration if prompt has content and either changed or section is missing
-  return Boolean(prompt && (prompt !== baseline || pair.missing))
+  return Boolean(((drafts as Record<string, string>)[pair.sectionKey] || '').trim())
 }
 
 function sectionState(sectionKey: string) {
@@ -542,47 +657,51 @@ function versionHistory(pair: GeneratedPair) {
 function syncDrafts() {
   try {
     const keys = pairedRows.value.map((p) => p.sectionKey)
-
-    // Decompose master prompt into per-section editor content.
-    const extracted = parseMasterPromptForKeys(masterEditor.value || '', keys)
+    const originalMaster = masterEditor.value || ''
+    const extracted = parseMasterPromptForKeys(originalMaster, keys)
+    const hasAnyMarkers = keys.some((key) => originalMaster.includes(`[SECTION:${key}]`))
 
     for (const pair of pairedRows.value) {
       const key = pair.sectionKey
       const fromMaster = extracted[key]
 
-      // Priority order for section prompt content:
-      // 1. Extracted from master prompt (preserves Dataset Analysis Prompt structure)
-      // 2. From associated prompt module (maintains module-based prompts)
-      // 3. Generate from section title as fallback (ensures no empty sections)
+      // Priority:
+      // 1) Exact [SECTION:key] extract from master (Dataset Analysis Prompt)
+      // 2) Linked prompt module text
+      // 3) Empty (show unavailable)
       let next = ''
       if (typeof fromMaster === 'string' && fromMaster.trim()) {
         next = fromMaster.trim()
       } else if (pair.module?.prompt_text?.trim()) {
         next = pair.module.prompt_text.trim()
-      } else {
-        // Generate a basic prompt from the section title to ensure correspondence
-        next = `Generate a comprehensive ${pair.reportTitle} section for this financial report.`
       }
 
-      // Only update draft if it's empty or not dirty (preserve user edits)
-      if (!drafts[key] || !dirtyKeys.value.has(key)) {
-        drafts[key] = next
-        baselines[key] = next
+      if (!(drafts as Record<string, string>)[key] || !dirtyKeys.value.has(key)) {
+        (drafts as Record<string, string>)[key] = next
+        (baselines as Record<string, string>)[key] = next
       }
-      setSectionState(key, 'UNCHANGED')
+      setSectionState(key, dirtyKeys.value.has(key) ? 'DIRTY' : 'UNCHANGED')
     }
 
-    // Canonicalize the master prompt so it always contains all section markers.
-    // This ensures the Dataset Analysis Prompt structure is maintained.
-    syncingFromModules.value = true
-    masterEditor.value = composeMasterFromDrafts(keys, drafts)
-    syncingFromModules.value = false
+    // Only rewrite master into canonical markers when it already uses markers
+    // or section drafts have real content. Never wipe a readable dataset prompt
+    // into empty [SECTION] shells.
+    const hasDraftContent = keys.some((key) => Boolean((drafts as Record<string, string>)[key]?.trim()))
+    if (hasAnyMarkers || hasDraftContent) {
+      const composed = composeMasterFromDrafts(keys, drafts as Record<string, string>)
+      const composedHasContent = keys.some((key) => Boolean((drafts as Record<string, string>)[key]?.trim()))
+      if (composedHasContent) {
+        syncingFromModules.value = true
+        masterEditor.value = composed
+        syncingFromModules.value = false
+      }
+    }
 
     if (!selectedKey.value && pairedRows.value.length) {
       selectedKey.value = pairedRows.value[0]!.sectionKey
     }
 
-    console.log('Synced drafts for sections:', keys.length, 'sections processed')
+    mappingValidation.value = validateSectionMapping()
   } catch (error: unknown) {
     console.error('Error syncing drafts:', error)
     errorMessage.value = 'Failed to sync prompts. Please refresh the page.'
@@ -600,7 +719,7 @@ watch(
       if (typeof extracted[key] === 'string' && extracted[key].trim()) {
         // Only update drafts from master if the section has content
         // This preserves the Dataset Analysis Prompt structure
-        drafts[key] = extracted[key].trim()
+        (drafts as Record<string, string>)[key] = extracted[key].trim()
         markDirty(key)
       }
     }
@@ -633,21 +752,26 @@ async function loadReport() {
   errorMessage.value = ''
   try {
     const resp = await api.getReport(props.reportId)
-    report.value = resp.data
+    report.value = resp.data as AnyRecord
 
     // Load the master prompt (which contains the Dataset Analysis Prompt structure)
-    const userPrompt = resp.data?.user_prompt || resp.data?.metadata?.user_prompt || ''
-    masterEditor.value = userPrompt
+    const userPrompt = resp.data?.user_prompt || (resp.data as Record<string, unknown>)?.metadata?.user_prompt || ''
+    masterEditor.value = String(userPrompt)
 
     console.log('Loaded report with user_prompt length:', userPrompt.length)
 
     // Log the actual section keys in the report for debugging
-    const sections = resp.data?.comprehensive_analysis || []
-    const sectionKeys = sections.map((s: Record<string, unknown>) => ({
-      key: s.section_key || s.key,
-      title: s.title,
-      index: sections.indexOf(s)
-    }))
+    const sections = Array.isArray(resp.data?.comprehensive_analysis)
+      ? resp.data?.comprehensive_analysis
+      : []
+    const sectionKeys = sections.map((s: unknown, idx: number) => {
+      const sectionRecord = s as Record<string, unknown>
+      return {
+        key: sectionRecord.section_key || sectionRecord.key,
+        title: sectionRecord.title,
+        index: idx
+      }
+    })
     console.log('Report sections:', JSON.stringify(sectionKeys, null, 2))
 
     syncDrafts()
@@ -679,7 +803,7 @@ async function regenerateOne(pair: GeneratedPair) {
 
   try {
     // Use the edited section prompt to ensure accurate correspondence
-    const sectionPrompt = drafts[pair.sectionKey]?.trim() || ''
+    const sectionPrompt = (drafts as Record<string, string>)[pair.sectionKey]?.trim() || ''
 
     console.log('Regenerating section:', pair.sectionKey, 'with prompt length:', sectionPrompt.length)
 
@@ -693,7 +817,10 @@ async function regenerateOne(pair: GeneratedPair) {
     }
 
     await loadReport()
-    baselines[pair.sectionKey] = drafts[pair.sectionKey] ?? ''
+    const draftValue = drafts[pair.sectionKey] ?? ''
+    const draftStr = typeof draftValue === 'string' ? draftValue : ''
+    baselines[pair.sectionKey] = draftStr
+    drafts[pair.sectionKey] = draftStr
     const dirty = new Set(dirtyKeys.value)
     dirty.delete(pair.sectionKey)
     dirtyKeys.value = dirty
@@ -715,7 +842,7 @@ async function regenerateOne(pair: GeneratedPair) {
     console.error('Regeneration error:', errorMsg)
     console.error('Full error response:', errorDetails)
     console.error('Section key sent:', pair.sectionKey)
-    console.error('Prompt length:', drafts[pair.sectionKey]?.length || 0)
+    console.error('Prompt length:', (drafts as Record<string, string>)[pair.sectionKey]?.length || 0)
   } finally {
     regenerating.value = false
     regeneratingKey.value = ''
