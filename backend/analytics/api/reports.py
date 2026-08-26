@@ -212,13 +212,15 @@ def regenerate_report_section_view(request, report_id, section_key):
     prior_history = list(section_history.get(resolved_section_key) or [])
 
     report_options = dict(report.get('report_options') or (report.get('metadata') or {}).get('report_options') or {})
+    # Force a single-section regeneration context so the AI does not rebuild the full report.
     report_options['sections'] = [resolved_section_key]
     report_options['include_sections'] = [resolved_section_key]
     report_options['exclude_sections'] = [
         key for key in (report.get('report_options') or {}).get('sections', [])
         if key != resolved_section_key
     ]
-    report_options['template'] = report_options.get('template') or 'custom'
+    report_options['template'] = 'custom'
+    report_options['template_type'] = 'custom'
 
     section_prompt_module = None
     if not re.match(r'^section_\d+$', section_key):
@@ -260,7 +262,9 @@ def regenerate_report_section_view(request, report_id, section_key):
             'raw_financial_data': original_json,
             'existing_analysis': report.get('ai_analysis') or perform_initial_ai_analysis(original_json),
             'data_summary': build_data_summary(original_json),
-            'user_prompt': report.get('user_prompt') or (report.get('metadata') or {}).get('user_prompt') or edited_prompt,
+            # Use only the edited section prompt — not the full multi-section master —
+            # so the model returns a single section.
+            'user_prompt': edited_prompt,
             'report_options': report_options,
             'section_prompt_overrides': {resolved_section_key: edited_prompt},
         })
@@ -270,10 +274,20 @@ def regenerate_report_section_view(request, report_id, section_key):
             return JsonResponse({'error': (analysis_result or {}).get('error') or 'Section regeneration failed'}, status=503)
 
         new_sections = analysis_result.get('sections') or []
-        if len(new_sections) != 1:
+        if not new_sections:
             return JsonResponse({'error': 'The AI returned an invalid section structure.'}, status=500)
 
-        new_section = dict(new_sections[0])
+        chosen = None
+        for candidate in new_sections:
+            cand_key = str(candidate.get('section_key') or candidate.get('key') or '').strip()
+            cand_title = str(candidate.get('title', '')).strip().lower().replace(' ', '_')
+            if cand_key == resolved_section_key or cand_title == resolved_section_key:
+                chosen = candidate
+                break
+        if chosen is None:
+            chosen = new_sections[0]
+
+        new_section = dict(chosen)
         new_section['section_key'] = resolved_section_key
         if not new_section.get('content'):
             return JsonResponse({'error': 'The AI returned an empty section.'}, status=500)

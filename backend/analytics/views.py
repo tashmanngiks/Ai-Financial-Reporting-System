@@ -114,7 +114,11 @@ def extract_entity_metadata(json_data):
     bank_name = 'Financial Dataset'
     period = 'Unknown Period'
 
-    name_keys = ('bank_name', 'bankName', 'BankName', 'institution', 'company', 'organization', 'entity', 'name')
+    name_keys = (
+        'bank_name', 'bankName', 'BankName', 'institution', 'institution_name',
+        'company', 'company_name', 'companyName', 'organization', 'organisation',
+        'entity', 'entity_name', 'client', 'client_name', 'legal_name', 'name',
+    )
     period_keys = ('period', 'data_period', 'reporting_period', 'asOf', 'Asof', 'date', 'report_date', 'year')
 
     def scan(obj, depth=0):
@@ -232,57 +236,41 @@ def _append_comprehensive_section_pdf(story, section, styles):
     story.append(Spacer(1, 8))
 
 
+def _add_justified_paragraph(doc, text, style=None):
+    """Add a paragraph with justified alignment (Word exports)."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    paragraph = doc.add_paragraph(str(text), style=style) if style else doc.add_paragraph(str(text))
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    return paragraph
+
+
 def _append_comprehensive_section_word(doc, section):
-    doc.add_heading(str(section.get('title', 'Section')), level=2)
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    heading = doc.add_heading(str(section.get('title', 'Section')), level=2)
+    heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
     content = section.get('content', {})
     if isinstance(content, dict):
         if content.get('content'):
-            doc.add_paragraph(_export_plain_text(content.get('content')))
+            _add_justified_paragraph(doc, _export_plain_text(content.get('content')))
         for point in content.get('key_points', []):
-            doc.add_paragraph(str(point), style='List Bullet')
+            _add_justified_paragraph(doc, str(point), style='List Bullet')
         for rec in content.get('recommendations', []):
             if isinstance(rec, dict):
                 rec_text = rec.get('action') or rec.get('area') or str(rec)
             else:
                 rec_text = str(rec)
-            doc.add_paragraph(str(rec_text), style='List Bullet')
+            _add_justified_paragraph(doc, str(rec_text), style='List Bullet')
     elif content:
-        doc.add_paragraph(_export_plain_text(content))
+        _add_justified_paragraph(doc, _export_plain_text(content))
 
 
 def generate_pdf_report(report_data):
-    """Generate PDF report from report data"""
-    from xml.sax.saxutils import escape
+    """Generate a DuraCapital-branded PDF (cover, TOC, logo headers)."""
+    from .services.pdf_report_branding import generate_branded_pdf_report
 
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
-    styles = getSampleStyleSheet()
-    story = []
-
-    report_title = report_data.get('metadata', {}).get('title') or 'AI Financial Analysis Report'
-    story.append(Paragraph(escape(str(report_title)), styles['Title']))
-    story.append(Spacer(1, 12))
-
-    story.append(Paragraph(f"Bank: {escape(str(report_data.get('bank_name', 'Unknown Bank')))}", styles['Normal']))
-    story.append(Paragraph(f"Period: {escape(str(report_data.get('data_period', 'Unknown Period')))}", styles['Normal']))
-    story.append(Paragraph(f"Generated: {escape(str(report_data.get('uploaded_at', 'Unknown')))}", styles['Normal']))
-    story.append(Spacer(1, 12))
-
-    comprehensive = report_data.get('comprehensive_analysis', [])
-    if comprehensive:
-        story.append(Paragraph("AI Analysis Report", styles['Heading2']))
-        for section in comprehensive:
-            _append_comprehensive_section_pdf(story, section, styles)
-    else:
-        story.append(Paragraph("AI Analysis", styles['Heading2']))
-        ai_analysis = report_data.get('ai_analysis', {})
-        for section, content in ai_analysis.items():
-            story.append(Paragraph(escape(str(section).title()), styles['Heading3']))
-            story.append(Paragraph(escape(_export_plain_text(content)), styles['Normal']))
-
-    doc.build(story)
-    buffer.seek(0)
-    return buffer.getvalue()
+    return generate_branded_pdf_report(report_data)
 
 def generate_csv_report(report_data):
     """Generate CSV report from report data"""
@@ -313,14 +301,21 @@ def generate_csv_report(report_data):
     return content
 
 def generate_word_report(report_data):
-    """Generate Word document report"""
+    """Generate Word document report with justified body text."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
     doc = Document()
 
     report_title = report_data.get('metadata', {}).get('title') or 'AI Financial Analysis Report'
-    doc.add_heading(str(report_title), 0)
-    doc.add_paragraph(f"Bank: {report_data.get('bank_name', 'Unknown Bank')}")
-    doc.add_paragraph(f"Period: {report_data.get('data_period', 'Unknown Period')}")
-    doc.add_paragraph(f"Generated: {report_data.get('uploaded_at', 'Unknown')}")
+    title_heading = doc.add_heading(str(report_title), 0)
+    title_heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+    meta_bank = doc.add_paragraph(f"Bank: {report_data.get('bank_name', 'Unknown Bank')}")
+    meta_bank.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    meta_period = doc.add_paragraph(f"Period: {report_data.get('data_period', 'Unknown Period')}")
+    meta_period.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    meta_generated = doc.add_paragraph(f"Generated: {report_data.get('uploaded_at', 'Unknown')}")
+    meta_generated.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
     comprehensive = report_data.get('comprehensive_analysis', [])
     if comprehensive:
@@ -332,7 +327,7 @@ def generate_word_report(report_data):
         ai_analysis = report_data.get('ai_analysis', {})
         for section, content in ai_analysis.items():
             doc.add_heading(str(section).title(), level=2)
-            doc.add_paragraph(_export_plain_text(content))
+            _add_justified_paragraph(doc, _export_plain_text(content))
 
     buffer = io.BytesIO()
     doc.save(buffer)
