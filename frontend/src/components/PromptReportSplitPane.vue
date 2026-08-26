@@ -101,23 +101,22 @@
             </button>
           </div>
 
-          <div v-if="!drafts[pair.sectionKey]?.trim()" class="w-full border border-gray-200 rounded p-3 bg-gray-50 text-center">
-            <p class="text-xs text-gray-500 italic">Prompt unavailable for this section</p>
-            <p class="text-[10px] text-gray-400 mt-1">Section key: {{ pair.sectionKey }}</p>
-          </div>
           <textarea
-            v-else
             :id="`section-prompt-${pair.sectionKey}`"
             :name="`section_prompt_${pair.sectionKey}`"
-            v-model="drafts[pair.sectionKey]"
+            :value="drafts[pair.sectionKey] ?? ''"
             rows="8"
-            class="w-full border border-gray-200 rounded p-2 font-mono text-xs leading-relaxed focus:ring-1 focus:ring-[#08AAC7] bg-white"
+            class="w-full border border-gray-200 rounded p-2 font-mono text-xs leading-relaxed focus:ring-1 focus:ring-[#08AAC7] bg-white relative z-10"
             placeholder="Write the prompt instructions for this report section…"
             @click.stop
-            @input="onDraftEdit(pair.sectionKey)"
-            @focus="selectSection(pair.sectionKey, 'prompt')"
+            @mousedown.stop
+            @input="onSectionInput(pair.sectionKey, $event)"
+            @focus="selectedKey = pair.sectionKey"
           />
-          <p v-if="!pair.module" class="text-[11px] text-amber-700 mt-1">
+          <p v-if="!(drafts[pair.sectionKey] || '').trim()" class="text-[11px] text-amber-700 mt-1">
+            This section prompt is empty — paste or type instructions, then regenerate.
+          </p>
+          <p v-else-if="!pair.module" class="text-[11px] text-amber-700 mt-1">
             No saved module yet — regenerating will still use the text above for this section only.
           </p>
         </section>
@@ -349,10 +348,22 @@ function composeMasterFromDrafts(keys: string[], draftMap: Record<string, string
   for (const k of keys) {
     const key = String(k).trim()
     if (!key) continue
-    const promptText = String((draftMap as Record<string, string>)[key] ?? '').replace(/\s+$/, '')
+    const promptText = String(draftMap[key] ?? '').replace(/\s+$/, '')
     parts.push(`[SECTION:${key}]\n${promptText}\n[/SECTION]`)
   }
   return parts.join('\n\n')
+}
+
+/** Replace only one section block inside the master prompt (preserves other sections + preamble). */
+function upsertSectionInMaster(master: string, sectionKey: string, body: string) {
+  const key = String(sectionKey).trim()
+  const block = `[SECTION:${key}]\n${String(body || '').replace(/\s+$/, '')}\n[/SECTION]`
+  const re = new RegExp(`\\[SECTION:${escapeRegExp(key)}\\][\\s\\S]*?\\[/SECTION\\]`, 'i')
+  if (re.test(master || '')) {
+    return (master || '').replace(re, () => block)
+  }
+  const trimmed = (master || '').replace(/\s+$/, '')
+  return trimmed ? `${trimmed}\n\n${block}` : block
 }
 
 const reportTitle = computed(
@@ -462,7 +473,7 @@ function validateSectionMapping(): Record<string, unknown> {
                       masterEditor.value.toLowerCase().includes(title.toLowerCase())
 
     // Check if this section exists in drafts
-    const hasEditor = Boolean((drafts as Record<string, string>)[key]?.trim())
+    const hasEditor = Boolean(String(drafts[key] || '').trim())
 
     mappings.push({
       section_key: key,
@@ -477,8 +488,8 @@ function validateSectionMapping(): Record<string, unknown> {
   })
 
   // Check for orphan prompts in drafts
-  Object.keys(drafts as Record<string, string>).forEach(key => {
-    if (!sectionKeys.has(key) && (drafts as Record<string, string>)[key]?.trim()) {
+  Object.keys(drafts).forEach((key) => {
+    if (!sectionKeys.has(key) && String(drafts[key] || '').trim()) {
       issues.push(`Orphan prompt for section: ${key}`)
     }
   })
@@ -562,27 +573,27 @@ const selectedPair = computed<GeneratedPair | null>(() => {
 })
 
 function markDirty(sectionKey: string) {
-  const current = drafts[sectionKey] ?? ''
-  const baseline = baselines[sectionKey] ?? ''
-  const next = new Set(dirtyKeys.value)
-  if (current.trim() !== baseline.trim()) next.add(sectionKey)
-  else next.delete(sectionKey)
-  dirtyKeys.value = next
+  const current = String(drafts[sectionKey] ?? '')
+  const baseline = String(baselines[sectionKey] ?? '')
+  const dirty = new Set(dirtyKeys.value)
+  if (current.trim() !== baseline.trim()) dirty.add(sectionKey)
+  else dirty.delete(sectionKey)
+  dirtyKeys.value = dirty
 }
 
-function onDraftEdit(sectionKey: string) {
-  try {
-    markDirty(sectionKey)
-    // Keep master prompt synchronized (canonical marker format) when user edits a section prompt.
-    // This is the bidirectional link: module edits -> master prompt.
-    const keys = pairedRows.value.map((p) => p.sectionKey)
-    syncingFromModules.value = true
-    masterEditor.value = composeMasterFromDrafts(keys, drafts as Record<string, string>)
+function onSectionInput(sectionKey: string, event: Event) {
+  const target = event.target as HTMLTextAreaElement | null
+  const value = target ? target.value : ''
+  drafts[sectionKey] = value
+  markDirty(sectionKey)
+
+  // Update only this section inside the master prompt (do not rebuild all sections).
+  // Keep the flag set until after the watcher flush so edits are not overwritten.
+  syncingFromModules.value = true
+  masterEditor.value = upsertSectionInMaster(masterEditor.value, sectionKey, value)
+  void nextTick(() => {
     syncingFromModules.value = false
-  } catch (error: unknown) {
-    console.error('Error editing draft:', error)
-    errorMessage.value = 'Failed to update prompt. Please try again.'
-  }
+  })
 }
 
 function onMasterEdit() {
@@ -634,7 +645,7 @@ function canRegenerate(pair: GeneratedPair) {
   if (!pair?.sectionKey) return false
   if (sectionState(pair.sectionKey) === 'REGENERATING') return false
   if (regenerating.value) return false
-  return Boolean(((drafts as Record<string, string>)[pair.sectionKey] || '').trim())
+  return Boolean(String(drafts[pair.sectionKey] || '').trim())
 }
 
 function sectionState(sectionKey: string) {
@@ -659,42 +670,25 @@ function syncDrafts() {
     const keys = pairedRows.value.map((p) => p.sectionKey)
     const originalMaster = masterEditor.value || ''
     const extracted = parseMasterPromptForKeys(originalMaster, keys)
-    const hasAnyMarkers = keys.some((key) => originalMaster.includes(`[SECTION:${key}]`))
 
     for (const pair of pairedRows.value) {
       const key = pair.sectionKey
+      if (dirtyKeys.value.has(key)) {
+        continue
+      }
+
       const fromMaster = extracted[key]
-
-      // Priority:
-      // 1) Exact [SECTION:key] extract from master (Dataset Analysis Prompt)
-      // 2) Linked prompt module text
-      // 3) Empty (show unavailable)
-      let next = ''
+      let promptText = ''
       if (typeof fromMaster === 'string' && fromMaster.trim()) {
-        next = fromMaster.trim()
+        promptText = fromMaster.trim()
       } else if (pair.module?.prompt_text?.trim()) {
-        next = pair.module.prompt_text.trim()
+        promptText = String(pair.module.prompt_text).trim()
       }
 
-      if (!(drafts as Record<string, string>)[key] || !dirtyKeys.value.has(key)) {
-        (drafts as Record<string, string>)[key] = next
-        (baselines as Record<string, string>)[key] = next
-      }
-      setSectionState(key, dirtyKeys.value.has(key) ? 'DIRTY' : 'UNCHANGED')
-    }
-
-    // Only rewrite master into canonical markers when it already uses markers
-    // or section drafts have real content. Never wipe a readable dataset prompt
-    // into empty [SECTION] shells.
-    const hasDraftContent = keys.some((key) => Boolean((drafts as Record<string, string>)[key]?.trim()))
-    if (hasAnyMarkers || hasDraftContent) {
-      const composed = composeMasterFromDrafts(keys, drafts as Record<string, string>)
-      const composedHasContent = keys.some((key) => Boolean((drafts as Record<string, string>)[key]?.trim()))
-      if (composedHasContent) {
-        syncingFromModules.value = true
-        masterEditor.value = composed
-        syncingFromModules.value = false
-      }
+      // Always initialize every section key so every left editor is bound and editable.
+      drafts[key] = promptText
+      baselines[key] = promptText
+      setSectionState(key, 'UNCHANGED')
     }
 
     if (!selectedKey.value && pairedRows.value.length) {
@@ -712,21 +706,18 @@ watch(
   masterEditor,
   () => {
     if (syncingFromModules.value) return
+    // Only decompose master → section editors when the user edits the master textarea.
     const keys = pairedRows.value.map((p) => p.sectionKey)
     const extracted = parseMasterPromptForKeys(masterEditor.value || '', keys)
-
     for (const key of keys) {
-      if (typeof extracted[key] === 'string' && extracted[key].trim()) {
-        // Only update drafts from master if the section has content
-        // This preserves the Dataset Analysis Prompt structure
-        (drafts as Record<string, string>)[key] = extracted[key].trim()
+      const extractedText = extracted[key]
+      if (typeof extractedText === 'string') {
+        drafts[key] = extractedText.trim()
         markDirty(key)
       }
     }
-
-    console.log('Master prompt updated, synced to', Object.keys(extracted).length, 'sections')
   },
-  { deep: false },
+  { flush: 'sync' },
 )
 
 async function selectSection(key: string, origin: 'prompt' | 'report') {
@@ -754,9 +745,12 @@ async function loadReport() {
     const resp = await api.getReport(props.reportId)
     report.value = resp.data as AnyRecord
 
-    // Load the master prompt (which contains the Dataset Analysis Prompt structure)
+    // Load the master prompt without treating it as a user edit of the master textarea.
     const userPrompt = resp.data?.user_prompt || (resp.data as Record<string, unknown>)?.metadata?.user_prompt || ''
+    syncingFromModules.value = true
     masterEditor.value = String(userPrompt)
+    await nextTick()
+    syncingFromModules.value = false
 
     console.log('Loaded report with user_prompt length:', userPrompt.length)
 
@@ -774,7 +768,13 @@ async function loadReport() {
     })
     console.log('Report sections:', JSON.stringify(sectionKeys, null, 2))
 
+    // Clear dirty state from any prior report, then hydrate every section editor.
+    dirtyKeys.value = new Set()
     syncDrafts()
+    console.log(
+      'Section editors ready:',
+      pairedRows.value.map((p) => `${p.sectionKey}:${String(drafts[p.sectionKey] || '').length}`),
+    )
   } catch (error: unknown) {
     console.error('Error loading report:', error)
     statusMessage.value = 'Failed to load report.'
@@ -803,13 +803,14 @@ async function regenerateOne(pair: GeneratedPair) {
 
   try {
     // Use the edited section prompt to ensure accurate correspondence
-    const sectionPrompt = (drafts as Record<string, string>)[pair.sectionKey]?.trim() || ''
+    const sectionPrompt = String(drafts[pair.sectionKey] || '').trim()
 
     console.log('Regenerating section:', pair.sectionKey, 'with prompt length:', sectionPrompt.length)
 
     const response = await api.regenerateReportSection(props.reportId, pair.sectionKey, {
       reason: pair.missing ? 'missing section generation' : 'edited prompt section regeneration',
       prompt: sectionPrompt,
+      force: true,
     })
 
     if (response.data?.error) {
@@ -842,7 +843,7 @@ async function regenerateOne(pair: GeneratedPair) {
     console.error('Regeneration error:', errorMsg)
     console.error('Full error response:', errorDetails)
     console.error('Section key sent:', pair.sectionKey)
-    console.error('Prompt length:', (drafts as Record<string, string>)[pair.sectionKey]?.length || 0)
+    console.error('Prompt length:', String(drafts[pair.sectionKey] || '').length)
   } finally {
     regenerating.value = false
     regeneratingKey.value = ''
@@ -875,7 +876,14 @@ watch(
   },
 )
 
-watch(pairedRows, () => syncDrafts())
+// Sync drafts once when the section list first becomes available (not on every reactive tweak).
+watch(
+  () => pairedRows.value.map((p) => p.sectionKey).join('|'),
+  (keyList, previous) => {
+    if (!keyList || keyList === previous) return
+    syncDrafts()
+  },
+)
 
 onMounted(async () => {
   await loadModules()
