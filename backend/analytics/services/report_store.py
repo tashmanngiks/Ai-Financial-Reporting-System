@@ -123,6 +123,8 @@ def list_report_records(
     else:
         queryset = PersistedReport.objects.all()
 
+    queryset = queryset.select_related('owner')
+
     if not include_archived:
         queryset = queryset.filter(is_archived=False)
 

@@ -195,6 +195,12 @@ def _dataset_label(report_data: dict[str, Any], metadata: dict[str, Any]) -> str
         "wacc": "WACC Analysis",
         "money_market": "Money Market Analysis",
         "financial_instruments": "Financial Instruments Analysis",
+        "credit_risk": "Credit Risk Analysis",
+        "financial_statements": "Financial Statements & Ratios Analysis",
+        "investment_portfolio": "Investment Portfolio Analysis",
+        "market_macro": "Market & Macroeconomic Data Analysis",
+        "valuation": "Valuation Analysis",
+        "annual_financial": "Annual Financial Analysis",
     }
     if raw in labels:
         return labels[raw]

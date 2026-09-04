@@ -58,6 +58,12 @@ def ensure_prompt_defaults() -> None:
                     "wacc_analysis",
                     "money_market_analysis",
                     "financial_instruments_analysis",
+                    "credit_risk_analysis",
+                    "financial_statements_analysis",
+                    "investment_portfolio_analysis",
+                    "market_macro_analysis",
+                    "valuation_analysis",
+                    "annual_financial_analysis",
                 }
             ):
                 prompt.content = new_default

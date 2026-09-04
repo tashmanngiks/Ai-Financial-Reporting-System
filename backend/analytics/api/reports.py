@@ -808,22 +808,95 @@ def list_manageable_reports(request):
         search=search,
         status=status,
     )
+
+    dataset_labels = {
+        'wacc': 'WACC',
+        'money_market': 'Money Market',
+        'financial_instruments': 'Financial Instruments',
+        'credit_risk': 'Credit Risk',
+        'financial_statements': 'Financial Statements & Ratios',
+        'investment_portfolio': 'Investment Portfolio',
+        'market_macro': 'Market & Macroeconomic Data',
+        'valuation': 'Valuation',
+        'annual_financial': 'Annual Financial',
+    }
+
     items = []
     for record in records:
         report = record.report_data or {}
+        metadata = report.get('metadata') if isinstance(report.get('metadata'), dict) else {}
+        report_options = report.get('report_options') or metadata.get('report_options') or {}
+        dataset_type = (
+            report.get('dataset_type')
+            or metadata.get('dataset_type')
+            or report.get('report_type')
+            or metadata.get('template_name')
+            or 'analysis'
+        )
+        dataset_key = str(dataset_type).strip().lower().replace(' ', '_').replace('-', '_')
+        if dataset_key.endswith('_report'):
+            dataset_key = dataset_key[: -len('_report')]
+
+        sections = (
+            report.get('comprehensive_analysis')
+            or report.get('sections')
+            or (report.get('ai_analysis') or {}).get('sections')
+            or report_options.get('sections')
+            or []
+        )
+        sections_count = len(sections) if isinstance(sections, list) else 0
+
+        version = (
+            report.get('version')
+            or metadata.get('version')
+            or report.get('report_version')
+            or metadata.get('report_version')
+            or 1
+        )
+        try:
+            version_number = int(version)
+        except (TypeError, ValueError):
+            version_number = 1
+
+        created_by = (
+            record.owner_username
+            or (record.owner.username if getattr(record, 'owner', None) else '')
+            or metadata.get('generated_by')
+            or metadata.get('created_by')
+            or 'System'
+        )
+
+        status_value = str(report.get('status') or 'completed').strip().lower()
+        if record.is_archived and status_value == 'completed':
+            display_status = 'archived'
+        else:
+            display_status = status_value or 'completed'
+
+        title = (
+            metadata.get('title')
+            or report.get('filename')
+            or report.get('bank_name')
+            or str(record.id)
+        )
+
         items.append({
             'id': str(record.id),
             'filename': report.get('filename'),
             'bank_name': report.get('bank_name'),
-            'status': report.get('status', 'completed'),
+            'status': display_status,
             'ai_enhanced': report.get('ai_enhanced', False),
             'data_period': report.get('data_period'),
             'created_at': record.created_at.isoformat(),
             'updated_at': record.updated_at.isoformat(),
             'is_archived': record.is_archived,
             'archived_at': record.archived_at.isoformat() if record.archived_at else None,
-            'title': report.get('metadata', {}).get('title') or report.get('filename') or str(record.id),
-            'report_type': report.get('report_type') or report.get('metadata', {}).get('template_name') or 'analysis',
+            'title': title,
+            'report_name': title,
+            'report_type': dataset_labels.get(dataset_key, str(dataset_type).replace('_', ' ').title()),
+            'dataset_type': dataset_key,
+            'created_by': created_by,
+            'version': version_number,
+            'sections_count': sections_count,
         })
     return JsonResponse({'success': True, 'results': items, 'count': len(items)})
 

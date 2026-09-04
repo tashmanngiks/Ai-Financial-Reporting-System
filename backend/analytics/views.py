@@ -391,12 +391,14 @@ from .serializers import (
     ReportSummarySerializer, AnalysisTaskSerializer,
     UploadResponseSerializer, AnalysisRequestSerializer,
     TaskStatusSerializer, DetailedReportSerializer,
-    ReportFilterSerializer, FileUploadRequestSerializer
+    ReportFilterSerializer, FileUploadRequestSerializer,
+    FinancialInsightSerializer,
 )
 from .services.data_parser import FinancialDataParser
 from .services.metrics_engine import FinancialMetricsEngine
 from .services.insight_engine import FinancialInsightEngine
 from .services.report_generator import FinancialReportGenerator
+from .tasks import process_financial_analysis
 
 
 @csrf_exempt
@@ -1108,7 +1110,7 @@ def regenerate_insights(request, report_id):
                     'metadata': metadata,
                     'report_options': report_options or report.get('report_options', {}),
                 }
-                update_report(str(report_id), report_updates, request=request)
+                update_persisted_report(str(report_id), report_updates, request=request)
                 return Response({
                     'success': True,
                     'comprehensive_analysis': sections,

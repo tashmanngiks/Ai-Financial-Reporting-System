@@ -100,6 +100,13 @@ def _detect_available_data_sections(report_data: dict[str, Any]) -> list[str]:
         "macroeconomic_indicators",
         "investment",
         "financial_ratios",
+        "credit_risk",
+        "annual_financial",
+        "income_statement",
+        "balance_sheet",
+        "cash_flow",
+        "valuation",
+        "portfolio",
     ]
 
     for key in preferred_keys:

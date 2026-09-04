@@ -14,8 +14,14 @@ from ..services.report_store import get_report, save_report, update_report
 from django.conf import settings
 from ..services.prompt_module_store import apply_section_traceability
 from ..services.analysis_prompt_defaults import (
+    ANNUAL_FINANCIAL_ANALYSIS_ID,
+    CREDIT_RISK_ANALYSIS_ID,
     FINANCIAL_INSTRUMENTS_ANALYSIS_ID,
+    FINANCIAL_STATEMENTS_ANALYSIS_ID,
+    INVESTMENT_PORTFOLIO_ANALYSIS_ID,
+    MARKET_MACRO_ANALYSIS_ID,
     MONEY_MARKET_ANALYSIS_ID,
+    VALUATION_ANALYSIS_ID,
     WACC_ANALYSIS_ID,
 )
 from ..services.prompt_settings_store import get_analysis_prompt
@@ -78,7 +84,95 @@ DATASET_TYPE_RULES: dict[str, dict[str, Any]] = {
         ],
         'missing_indicators': ['bonds', 'equities', 'derivatives', 'mutual funds', 'ETFs'],
     },
+    'credit_risk': {
+        'label': 'Credit Risk',
+        'prompt_id': CREDIT_RISK_ANALYSIS_ID,
+        'template': 'credit_risk_report',
+        'signals': [
+            ['credit risk', 'credit_risk', 'credit exposure', 'credit_exposure'],
+            ['probability of default', 'probability_of_default', 'default probability', 'default_probability'],
+            ['loss given default', 'loss_given_default'],
+            ['exposure at default', 'exposure_at_default'],
+            ['expected loss', 'expected_loss', 'credit rating', 'credit_rating', 'credit quality', 'non performing', 'npl'],
+            ['counterparty', 'obligor', 'borrower risk', 'default risk', 'default_risk'],
+        ],
+        'missing_indicators': ['credit exposure', 'PD', 'LGD', 'EAD', 'default risk'],
+    },
+    'financial_statements': {
+        'label': 'Financial Statements & Ratios',
+        'prompt_id': FINANCIAL_STATEMENTS_ANALYSIS_ID,
+        'template': 'financial_statements_report',
+        'signals': [
+            ['financial statements', 'financial_statements', 'financial statement'],
+            ['current ratio', 'current_ratio', 'quick ratio', 'quick_ratio', 'acid test'],
+            ['debt to equity', 'debt-to-equity', 'debt_to_equity'],
+            ['return on assets', 'return_on_assets', 'return on equity', 'return_on_equity'],
+            ['net profit margin', 'net_profit_margin', 'operating margin', 'operating_margin', 'gross margin', 'gross_margin'],
+            ['liquidity ratio', 'leverage ratio', 'ratio analysis', 'financial ratios', 'financial_ratios'],
+        ],
+        'missing_indicators': ['financial statements', 'liquidity ratios', 'leverage ratios', 'profitability ratios'],
+    },
+    'investment_portfolio': {
+        'label': 'Investment Portfolio',
+        'prompt_id': INVESTMENT_PORTFOLIO_ANALYSIS_ID,
+        'template': 'investment_portfolio_report',
+        'signals': [
+            ['portfolio', 'investment portfolio', 'portfolio allocation'],
+            ['asset allocation', 'asset_allocation', 'holdings'],
+            ['portfolio return', 'portfolio performance', 'total return'],
+            ['diversification', 'concentration', 'portfolio weight', 'weights'],
+            ['sharpe', 'volatility', 'risk adjusted', 'risk-adjusted'],
+            ['benchmark', 'alpha', 'tracking error'],
+        ],
+        'missing_indicators': ['portfolio holdings', 'allocation', 'returns', 'portfolio risk'],
+    },
+    'market_macro': {
+        'label': 'Market & Macroeconomic Data',
+        'prompt_id': MARKET_MACRO_ANALYSIS_ID,
+        'template': 'market_macro_report',
+        'signals': [
+            ['macroeconomic', 'macro economic', 'macro indicator', 'macroeconomic indicator'],
+            ['gdp', 'gross domestic product'],
+            ['inflation', 'cpi', 'consumer price'],
+            ['interest rate', 'policy rate', 'central bank'],
+            ['unemployment', 'exchange rate', 'fx rate', 'foreign exchange'],
+            ['market index', 'equity index', 'sovereign', 'country risk'],
+        ],
+        'missing_indicators': ['GDP', 'inflation', 'interest rates', 'market indicators'],
+    },
+    'valuation': {
+        'label': 'Valuation',
+        'prompt_id': VALUATION_ANALYSIS_ID,
+        'template': 'valuation_report',
+        'signals': [
+            ['valuation', 'intrinsic value', 'fair value'],
+            ['dcf', 'discounted cash flow', 'discount rate', 'wacc discount'],
+            ['enterprise value', 'equity value', 'ev/'],
+            ['multiple', 'multiples', 'ev/ebitda', 'p/e', 'price to earnings'],
+            ['terminal value', 'free cash flow to firm', 'fcff', 'fcfe'],
+            ['net debt', 'value bridge', 'implied value'],
+        ],
+        'missing_indicators': ['DCF', 'multiples', 'enterprise value', 'equity value'],
+    },
+    'annual_financial': {
+        'label': 'Annual Financial',
+        'prompt_id': ANNUAL_FINANCIAL_ANALYSIS_ID,
+        'template': 'annual_financial_report',
+        'signals': [
+            ['income statement', 'income_statement', 'profit and loss', 'p&l'],
+            ['balance sheet', 'balance_sheet', 'statement of financial position'],
+            ['cash flow', 'cash_flow', 'operating cash flow', 'free cash flow'],
+            ['financial year', 'financial_year', 'fiscal year', 'fiscal_year', 'annual report'],
+            ['revenue', 'net income', 'net_income', 'ebitda', 'ebit', 'gross profit'],
+            ['total assets', 'total_assets', 'total liabilities', 'total equity', 'retained earnings'],
+        ],
+        'missing_indicators': ['revenue', 'assets', 'liabilities', 'equity', 'cash flow', 'financial year'],
+    },
 }
+
+
+def _dataset_type_labels() -> str:
+    return ', '.join(rule['label'] for rule in DATASET_TYPE_RULES.values())
 
 
 def _collect_text_tokens(value: Any, parts: list[str], depth: int = 0) -> None:
@@ -97,7 +191,7 @@ def _collect_text_tokens(value: Any, parts: list[str], depth: int = 0) -> None:
         parts.append(str(value))
 
 
-def _infer_dataset_type(json_data: Any) -> str | None:
+def _score_dataset_types(json_data: Any) -> dict[str, int]:
     parts: list[str] = []
     _collect_text_tokens(json_data, parts)
     text = ' '.join(parts).lower()
@@ -109,7 +203,11 @@ def _infer_dataset_type(json_data: Any) -> str | None:
             if any(signal in text for signal in signal_group):
                 score += 1
         scores[dataset_type] = score
+    return scores
 
+
+def _infer_dataset_type(json_data: Any) -> str | None:
+    scores = _score_dataset_types(json_data)
     if not scores:
         return None
 
@@ -122,18 +220,30 @@ def _infer_dataset_type(json_data: Any) -> str | None:
 def _validate_dataset_type(json_data: Any, selected_type: str) -> tuple[bool, str | None, str | None]:
     selected = (selected_type or '').strip().lower()
     if selected not in DATASET_TYPE_RULES:
-        return False, None, 'Please select one dataset type before uploading: WACC, Money Market, or Financial Instruments.'
+        return False, None, f'Please select one dataset type before uploading: {_dataset_type_labels()}.'
 
-    detected = _infer_dataset_type(json_data)
-    if detected == selected:
-        return True, detected, None
+    scores = _score_dataset_types(json_data)
+    selected_score = scores.get(selected, 0)
+    threshold = 2
+
+    # Accept when the selected type has enough supporting indicators, even if
+    # overlapping dataset types also score highly (e.g. annual financial vs statements).
+    if selected_score >= threshold:
+        return True, selected, None
+
+    best_other = None
+    best_other_score = 0
+    for dataset_type, score in scores.items():
+        if dataset_type != selected and score > best_other_score:
+            best_other = dataset_type
+            best_other_score = score
 
     selected_label = DATASET_TYPE_RULES[selected]['label']
-    if detected:
-        detected_label = DATASET_TYPE_RULES[detected]['label']
+    if best_other and best_other_score >= threshold:
+        detected_label = DATASET_TYPE_RULES[best_other]['label']
         return (
             False,
-            detected,
+            best_other,
             f'The uploaded data appears to contain {detected_label} information, but you selected {selected_label}. Please either upload the correct dataset or change the dataset type.',
         )
 
@@ -230,7 +340,7 @@ def simple_upload_view(request):
 
         if not selected_dataset_type:
             return JsonResponse({
-                'error': 'Please select one dataset type before uploading: WACC, Money Market, or Financial Instruments.',
+                'error': f'Please select one dataset type before uploading: {_dataset_type_labels()}.',
             }, status=400)
 
         if not uploaded_file.name.endswith('.json'):

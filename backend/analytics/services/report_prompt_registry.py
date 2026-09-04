@@ -196,6 +196,114 @@ Summarize the overall financial health and outlook of the organization. State wh
             "title": "Recommendations",
             "description": "Priority actions and implementation guidance.",
         },
+        "credit_risk_analysis": {
+            "title": "Credit Risk Analysis",
+            "description": "Credit quality, default risk, and portfolio credit profile.",
+        },
+        "exposure_analysis": {
+            "title": "Exposure Analysis",
+            "description": "Credit exposure size, composition, and concentration.",
+        },
+        "pd_lgd_ead_analysis": {
+            "title": "PD, LGD and EAD Analysis",
+            "description": "Probability of default, loss given default, exposure at default, and expected loss.",
+        },
+        "financial_position_analysis": {
+            "title": "Financial Position Analysis",
+            "description": "Assets, liabilities, equity, and overall financial position.",
+        },
+        "profitability_analysis": {
+            "title": "Profitability Analysis",
+            "description": "Earnings, margins, and profitability drivers.",
+        },
+        "liquidity_analysis": {
+            "title": "Liquidity Analysis",
+            "description": "Short-term solvency, cash position, and liquidity ratios.",
+        },
+        "leverage_analysis": {
+            "title": "Leverage Analysis",
+            "description": "Debt, leverage, coverage, and financing flexibility.",
+        },
+        "portfolio_allocation_analysis": {
+            "title": "Portfolio Allocation Analysis",
+            "description": "Asset allocation, weights, diversification, and concentration.",
+        },
+        "performance_analysis": {
+            "title": "Performance Analysis",
+            "description": "Portfolio and holding performance and return contribution.",
+        },
+        "risk_return_analysis": {
+            "title": "Risk and Return Analysis",
+            "description": "Volatility, risk-adjusted return, and risk-return tradeoffs.",
+        },
+        "valuation_analysis": {
+            "title": "Valuation Analysis",
+            "description": "Integrated intrinsic and relative valuation assessment.",
+        },
+        "dcf_analysis": {
+            "title": "DCF Analysis",
+            "description": "Discounted cash flow inputs, discount rate, and intrinsic value.",
+        },
+        "multiples_analysis": {
+            "title": "Multiples Analysis",
+            "description": "Trading and transaction multiples and implied value.",
+        },
+        "enterprise_equity_value": {
+            "title": "Enterprise and Equity Value",
+            "description": "Enterprise value, equity value, and value bridge components.",
+        },
+        "annual_financial_overview": {
+            "title": "Annual Financial Overview",
+            "description": "Reporting periods and overview of the annual financial package.",
+        },
+        "revenue_income_performance": {
+            "title": "Revenue and Income Performance",
+            "description": "Revenue, cost of sales, gross profit, and operating income performance.",
+        },
+        "asset_analysis": {
+            "title": "Asset Analysis",
+            "description": "Asset composition, quality, and material asset movements.",
+        },
+        "liability_debt_analysis": {
+            "title": "Liability and Debt Analysis",
+            "description": "Liabilities, borrowings, and debt profile.",
+        },
+        "equity_capital_structure_analysis": {
+            "title": "Equity and Capital Structure Analysis",
+            "description": "Equity, retained earnings, and capital structure.",
+        },
+        "cash_flow_analysis": {
+            "title": "Cash Flow Analysis",
+            "description": "Operating, investing, financing cash flows and free cash flow.",
+        },
+        "working_capital_analysis": {
+            "title": "Working Capital Analysis",
+            "description": "Working capital, receivables, inventory, and short-term funding needs.",
+        },
+        "financial_ratio_analysis": {
+            "title": "Financial Ratio Analysis",
+            "description": "Liquidity, leverage, profitability, and efficiency ratio interpretation.",
+        },
+        "year_over_year_trend_analysis": {
+            "title": "Year-over-Year Trend Analysis",
+            "description": "Multi-year comparative and percentage-change trend analysis.",
+        },
+        "financial_strength_stability": {
+            "title": "Financial Strength and Stability",
+            "description": "Overall financial strength and stability assessment.",
+        },
+        "financial_risks_weaknesses": {
+            "title": "Financial Risks and Weaknesses",
+            "description": "Material financial risks and weaknesses supported by the data.",
+        },
+        "key_performance_drivers": {
+            "title": "Key Performance Drivers",
+            "description": "Primary drivers of annual financial performance.",
+        },
+        "conclusion": {
+            "title": "Conclusion",
+            "description": "Overall annual financial assessment and priority actions.",
+        },
     },
     "templates": {
         "one_page_summary": {
@@ -245,6 +353,96 @@ Summarize the overall financial health and outlook of the organization. State wh
                 "financial_ratios",
                 "risk_assessment",
                 "recommendations",
+            ],
+        },
+        "credit_risk_report": {
+            "name": "Credit Risk Report",
+            "length": "standard",
+            "detail_level": "balanced",
+            "sections": [
+                "executive_summary",
+                "credit_risk_analysis",
+                "exposure_analysis",
+                "pd_lgd_ead_analysis",
+                "risk_assessment",
+                "recommendations",
+            ],
+        },
+        "financial_statements_report": {
+            "name": "Financial Statements & Ratios Report",
+            "length": "standard",
+            "detail_level": "balanced",
+            "sections": [
+                "executive_summary",
+                "financial_position_analysis",
+                "profitability_analysis",
+                "liquidity_analysis",
+                "leverage_analysis",
+                "financial_ratios",
+                "recommendations",
+            ],
+        },
+        "investment_portfolio_report": {
+            "name": "Investment Portfolio Report",
+            "length": "standard",
+            "detail_level": "balanced",
+            "sections": [
+                "executive_summary",
+                "portfolio_allocation_analysis",
+                "performance_analysis",
+                "risk_return_analysis",
+                "investment_analysis",
+                "recommendations",
+            ],
+        },
+        "market_macro_report": {
+            "name": "Market & Macroeconomic Data Report",
+            "length": "standard",
+            "detail_level": "balanced",
+            "sections": [
+                "executive_summary",
+                "macroeconomic_indicators",
+                "market_trends",
+                "country_risk_analysis",
+                "risk_assessment",
+                "recommendations",
+            ],
+        },
+        "valuation_report": {
+            "name": "Valuation Report",
+            "length": "standard",
+            "detail_level": "balanced",
+            "sections": [
+                "executive_summary",
+                "valuation_analysis",
+                "dcf_analysis",
+                "multiples_analysis",
+                "enterprise_equity_value",
+                "recommendations",
+            ],
+        },
+        "annual_financial_report": {
+            "name": "Annual Financial Report",
+            "length": "long",
+            "detail_level": "detailed",
+            "sections": [
+                "executive_summary",
+                "annual_financial_overview",
+                "revenue_income_performance",
+                "profitability_analysis",
+                "financial_position_analysis",
+                "asset_analysis",
+                "liability_debt_analysis",
+                "equity_capital_structure_analysis",
+                "cash_flow_analysis",
+                "working_capital_analysis",
+                "financial_ratio_analysis",
+                "year_over_year_trend_analysis",
+                "financial_strength_stability",
+                "financial_risks_weaknesses",
+                "key_performance_drivers",
+                "recommendations",
+                "conclusion",
             ],
         },
         "three_page_standard": {
@@ -395,6 +593,12 @@ class ReportPromptRegistry:
             "wacc_report",
             "money_market_report",
             "financial_instruments_report",
+            "credit_risk_report",
+            "financial_statements_report",
+            "investment_portfolio_report",
+            "market_macro_report",
+            "valuation_report",
+            "annual_financial_report",
             "comprehensive_multi_page",
             "three_page_standard",
         }
@@ -445,6 +649,18 @@ class ReportPromptRegistry:
             template_name = "money_market_report"
         elif template_name in {"financial_instruments", "financial_instruments_report"}:
             template_name = "financial_instruments_report"
+        elif template_name in {"credit_risk", "credit_risk_report"}:
+            template_name = "credit_risk_report"
+        elif template_name in {"financial_statements", "financial_statements_report"}:
+            template_name = "financial_statements_report"
+        elif template_name in {"investment_portfolio", "investment_portfolio_report"}:
+            template_name = "investment_portfolio_report"
+        elif template_name in {"market_macro", "market_macro_report"}:
+            template_name = "market_macro_report"
+        elif template_name in {"valuation", "valuation_report"}:
+            template_name = "valuation_report"
+        elif template_name in {"annual_financial", "annual_financial_report"}:
+            template_name = "annual_financial_report"
 
         template = self.get_template(template_name)
         available_sections = list(self.get_section_library().keys())
@@ -590,6 +806,87 @@ class ReportPromptRegistry:
             "recommendations": (
                 "Provide prioritized recommendations with expected impact, urgency, and feasibility. "
                 "Keep the list practical and action-oriented."
+            ),
+            "credit_risk_analysis": (
+                "Analyze credit quality, default risk indicators, and the overall credit-risk profile using only dataset evidence."
+            ),
+            "exposure_analysis": (
+                "Explain credit exposure size, composition, and concentration across counterparties, sectors, or products where data exists."
+            ),
+            "pd_lgd_ead_analysis": (
+                "Interpret PD, LGD, and EAD inputs. Discuss expected loss only when all required components are available."
+            ),
+            "financial_position_analysis": (
+                "Evaluate assets, liabilities, equity, and capital structure. Explain implications for solvency and stability."
+            ),
+            "profitability_analysis": (
+                "Analyze earnings, margins, and profitability drivers. Identify improvement or deterioration where evidenced."
+            ),
+            "liquidity_analysis": (
+                "Assess liquidity ratios, cash position, and short-term obligations using available statement data."
+            ),
+            "leverage_analysis": (
+                "Interpret debt, leverage, and coverage signals. Discuss financing risk only where supported by the dataset."
+            ),
+            "portfolio_allocation_analysis": (
+                "Analyze portfolio weights, diversification, and concentration. Explain allocation implications for risk and return."
+            ),
+            "performance_analysis": (
+                "Interpret portfolio and holding performance and return contribution patterns present in the data."
+            ),
+            "risk_return_analysis": (
+                "Assess volatility, drawdown, and risk-adjusted return using only available portfolio metrics."
+            ),
+            "valuation_analysis": (
+                "Provide an integrated valuation assessment across methods and inputs present in the dataset."
+            ),
+            "dcf_analysis": (
+                "Interpret DCF cash flows, discount rate, and intrinsic value when those fields exist; otherwise state limitations."
+            ),
+            "multiples_analysis": (
+                "Analyze trading or transaction multiples and implied value using only peer or history present in the file."
+            ),
+            "enterprise_equity_value": (
+                "Explain enterprise value, equity value, and bridge items such as net debt when supplied."
+            ),
+            "annual_financial_overview": (
+                "Identify reporting periods and summarize the annual financial package available in the dataset, noting material gaps."
+            ),
+            "revenue_income_performance": (
+                "Analyze revenue, cost of sales, gross profit, and operating income, including YoY changes when multiple years exist."
+            ),
+            "asset_analysis": (
+                "Analyze asset composition and material movements across current, non-current, and major asset lines."
+            ),
+            "liability_debt_analysis": (
+                "Analyze liabilities and debt profile, including leverage and flexibility implications supported by the data."
+            ),
+            "equity_capital_structure_analysis": (
+                "Analyze equity, retained earnings, and capital structure changes and financing implications."
+            ),
+            "cash_flow_analysis": (
+                "Analyze operating, investing, and financing cash flows, capex, and free cash flow where available."
+            ),
+            "working_capital_analysis": (
+                "Assess working capital, receivables, inventory, and related pressure or improvement signals."
+            ),
+            "financial_ratio_analysis": (
+                "Interpret material ratios with indication, movement, evidenced cause, and financial implications—not rote lists."
+            ),
+            "year_over_year_trend_analysis": (
+                "When multiple years exist, analyze YoY percentage changes and sustained trends; otherwise state that multi-year analysis cannot be performed."
+            ),
+            "financial_strength_stability": (
+                "Synthesize financial strength and stability across profitability, balance sheet, cash flow, and capital structure."
+            ),
+            "financial_risks_weaknesses": (
+                "Discuss only evidenced financial risks and weaknesses such as liquidity, leverage, cash-flow, or working-capital pressure."
+            ),
+            "key_performance_drivers": (
+                "Identify the primary evidenced drivers of annual financial performance."
+            ),
+            "conclusion": (
+                "Conclude with overall annual financial health, material risks, and highest-priority actions supported by the dataset."
             ),
         }
 
