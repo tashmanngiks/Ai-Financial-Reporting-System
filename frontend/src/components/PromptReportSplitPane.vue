@@ -199,20 +199,38 @@
             <summary class="cursor-pointer text-xs font-semibold uppercase tracking-wide text-gray-600">
               Version history
             </summary>
-            <div class="mt-2 space-y-2">
-              <div v-for="version in versionHistory(pair)" :key="version.id || version.version_number" class="text-xs text-gray-700">
-                <div class="font-medium text-gray-900">
-                  Version {{ version.version_number }}
-                  <span v-if="version.is_current" class="text-emerald-700">· current</span>
-                </div>
-                <div class="text-gray-500">
-                  {{ formatTimestamp(version.generated_at) }}
-                  <span v-if="version.generation_reason">· {{ version.generation_reason }}</span>
-                </div>
-                <div v-if="version.generation_status" class="text-gray-500">
-                  Status: {{ version.generation_status }}
-                </div>
-              </div>
+            <div class="mt-3">
+              <DataTable
+                :columns="versionHistoryColumns"
+                :rows="versionHistoryRows(pair)"
+                row-key="id"
+                :page-size="5"
+                empty-title="No version history."
+                empty-message="Regenerate this section to create version records."
+                caption="Prompt and report section version history"
+              >
+                <template #cell-version="{ value }">
+                  <span class="font-medium tabular-nums">{{ formatVersion(value) }}</span>
+                </template>
+                <template #cell-section="{ value }">
+                  <span>{{ value }}</span>
+                </template>
+                <template #cell-changed_by="{ value }">
+                  <span>{{ value || 'System' }}</span>
+                </template>
+                <template #cell-change_date="{ value }">
+                  <span class="tabular-nums">{{ formatDateTime(value) }}</span>
+                </template>
+                <template #cell-change_type="{ value }">
+                  <span>{{ value || 'Update' }}</span>
+                </template>
+                <template #cell-status="{ row }">
+                  <StatusBadge :status="row.status" :label="row.status_label" />
+                </template>
+                <template #cell-actions="{ row }">
+                  <span class="text-xs text-slate-500">{{ row.actions_label }}</span>
+                </template>
+              </DataTable>
             </div>
           </details>
         </article>
@@ -273,6 +291,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { api } from '@/services/api'
+import DataTable from '@/components/DataTable.vue'
+import StatusBadge from '@/components/StatusBadge.vue'
+import { formatDateTime, formatVersion } from '@/utils/tableFormat'
 
 const props = defineProps({
   reportId: { type: String, required: true },
@@ -301,6 +322,16 @@ interface GeneratedPair {
   trace: AnyRecord | null
   missing: boolean
 }
+
+const versionHistoryColumns = [
+  { key: 'version', label: 'Version', width: '5rem' },
+  { key: 'section', label: 'Section', wrap: true, width: '10rem' },
+  { key: 'changed_by', label: 'Changed By', width: '8rem' },
+  { key: 'change_date', label: 'Change Date', width: '10rem' },
+  { key: 'change_type', label: 'Change Type', width: '9rem' },
+  { key: 'status', label: 'Status', width: '7rem' },
+  { key: 'actions', label: 'Actions', width: '8rem' },
+]
 
 const loading = ref(false)
 const report = ref<AnyRecord | null>(null)
@@ -657,12 +688,33 @@ function setSectionState(sectionKey: string, state: string, error = '') {
 }
 
 function versionHistory(pair: GeneratedPair) {
-  const versions = report.value?.section_versions?.[pair.sectionKey]
+  const reportData = report.value as AnyRecord | null
+  const versions = (reportData?.section_versions as AnyRecord | undefined)?.[pair.sectionKey]
   if (Array.isArray(versions)) {
-    return [...versions].sort((a, b) => Number(b?.version_number || 0) - Number(a?.version_number || 0))
+    return [...versions].sort(
+      (a: AnyRecord, b: AnyRecord) => Number(b?.version_number || 0) - Number(a?.version_number || 0),
+    )
   }
-  const history = report.value?.section_history?.[pair.sectionKey]
+  const history = (reportData?.section_history as AnyRecord | undefined)?.[pair.sectionKey]
   return Array.isArray(history) ? history : []
+}
+
+function versionHistoryRows(pair: GeneratedPair) {
+  return versionHistory(pair).map((version: AnyRecord, index: number) => {
+    const isCurrent = Boolean(version.is_current) || index === 0
+    const status = isCurrent ? 'current' : String(version.generation_status || 'archived')
+    return {
+      id: String(version.id || `${pair.sectionKey}-${version.version_number || index}`),
+      version: version.version_number || index + 1,
+      section: pair.reportTitle || pair.promptTitle || pair.sectionKey,
+      changed_by: version.generated_by || version.created_by || version.changed_by || 'System',
+      change_date: version.generated_at || version.created_at || version.change_date,
+      change_type: version.generation_reason || version.change_type || 'Section update',
+      status,
+      status_label: isCurrent ? 'Current' : String(version.generation_status || 'Archived').replace(/^\w/, (c: string) => c.toUpperCase()),
+      actions_label: isCurrent ? 'Active version' : 'Historical',
+    }
+  })
 }
 
 function syncDrafts() {

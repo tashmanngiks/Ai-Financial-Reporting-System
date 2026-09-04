@@ -642,7 +642,16 @@ import { useAuthStore } from '@/stores/auth'
 import { api } from '@/services/api'
 import PromptReportSplitPane from '@/components/PromptReportSplitPane.vue'
 
-type DatasetType = 'wacc' | 'money_market' | 'financial_instruments'
+type DatasetType =
+  | 'wacc'
+  | 'money_market'
+  | 'financial_instruments'
+  | 'credit_risk'
+  | 'financial_statements'
+  | 'investment_portfolio'
+  | 'market_macro'
+  | 'valuation'
+  | 'annual_financial'
 
 type AnalysisPromptRecord = {
   id: string
@@ -707,6 +716,107 @@ const datasetOptions = [
     templateId: 'financial_instruments_report',
     templateLabel: 'Financial Instruments Report',
     sections: ['executive_summary', 'investment_analysis', 'market_trends', 'financial_ratios', 'risk_assessment', 'recommendations'],
+  },
+  {
+    id: 'credit_risk' as const,
+    label: 'Credit Risk',
+    description: 'Credit exposure, PD, LGD, EAD, and default risk analysis.',
+    promptId: 'credit_risk_analysis',
+    templateId: 'credit_risk_report',
+    templateLabel: 'Credit Risk Report',
+    sections: ['executive_summary', 'credit_risk_analysis', 'exposure_analysis', 'pd_lgd_ead_analysis', 'risk_assessment', 'recommendations'],
+  },
+  {
+    id: 'financial_statements' as const,
+    label: 'Financial Statements & Ratios',
+    description: 'Financial position, profitability, liquidity, and leverage analysis.',
+    promptId: 'financial_statements_analysis',
+    templateId: 'financial_statements_report',
+    templateLabel: 'Financial Statements & Ratios Report',
+    sections: [
+      'executive_summary',
+      'financial_position_analysis',
+      'profitability_analysis',
+      'liquidity_analysis',
+      'leverage_analysis',
+      'financial_ratios',
+      'recommendations',
+    ],
+  },
+  {
+    id: 'investment_portfolio' as const,
+    label: 'Investment Portfolio',
+    description: 'Portfolio allocation, performance, return, and risk analysis.',
+    promptId: 'investment_portfolio_analysis',
+    templateId: 'investment_portfolio_report',
+    templateLabel: 'Investment Portfolio Report',
+    sections: [
+      'executive_summary',
+      'portfolio_allocation_analysis',
+      'performance_analysis',
+      'risk_return_analysis',
+      'investment_analysis',
+      'recommendations',
+    ],
+  },
+  {
+    id: 'market_macro' as const,
+    label: 'Market & Macroeconomic Data',
+    description: 'Economic indicators, markets, rates, and macro trends.',
+    promptId: 'market_macro_analysis',
+    templateId: 'market_macro_report',
+    templateLabel: 'Market & Macroeconomic Data Report',
+    sections: [
+      'executive_summary',
+      'macroeconomic_indicators',
+      'market_trends',
+      'country_risk_analysis',
+      'risk_assessment',
+      'recommendations',
+    ],
+  },
+  {
+    id: 'valuation' as const,
+    label: 'Valuation',
+    description: 'DCF, multiples, enterprise value, and equity value analysis.',
+    promptId: 'valuation_analysis',
+    templateId: 'valuation_report',
+    templateLabel: 'Valuation Report',
+    sections: [
+      'executive_summary',
+      'valuation_analysis',
+      'dcf_analysis',
+      'multiples_analysis',
+      'enterprise_equity_value',
+      'recommendations',
+    ],
+  },
+  {
+    id: 'annual_financial' as const,
+    label: 'Annual Financial',
+    description: 'Annual performance, financial position, cash flows, ratios, and multi-year trends.',
+    promptId: 'annual_financial_analysis',
+    templateId: 'annual_financial_report',
+    templateLabel: 'Annual Financial Report',
+    sections: [
+      'executive_summary',
+      'annual_financial_overview',
+      'revenue_income_performance',
+      'profitability_analysis',
+      'financial_position_analysis',
+      'asset_analysis',
+      'liability_debt_analysis',
+      'equity_capital_structure_analysis',
+      'cash_flow_analysis',
+      'working_capital_analysis',
+      'financial_ratio_analysis',
+      'year_over_year_trend_analysis',
+      'financial_strength_stability',
+      'financial_risks_weaknesses',
+      'key_performance_drivers',
+      'recommendations',
+      'conclusion',
+    ],
   },
 ] as const
 

@@ -431,7 +431,10 @@
     <div class="bg-white rounded-lg shadow-sm border border-gray-200">
       <div class="card-header px-6 py-4 border-b border-gray-200">
         <div class="flex items-center justify-between">
-          <h3 class="text-lg font-medium text-gray-900">Financial Performance Analysis</h3>
+          <div>
+            <h3 class="text-lg font-medium text-gray-900">Financial Performance Analysis</h3>
+            <p class="text-sm text-gray-500 mt-0.5">One institution per row with aligned metrics and actions.</p>
+          </div>
           <div class="flex items-center space-x-2">
             <span class="text-sm text-gray-500">Last updated</span>
             <span class="text-sm font-medium text-gray-700">{{ new Date().toLocaleDateString() }}</span>
@@ -439,140 +442,95 @@
         </div>
       </div>
 
-      <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200">
-          <thead class="bg-gray-50 sticky top-0 z-10">
-            <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Institution</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Performance Score</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk Status</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Key Metrics</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trend</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody class="bg-white divide-y divide-gray-200">
-            <tr v-for="report in analyticsStore.reports" :key="report.id" class="hover:bg-gray-50 transition-colors">
-              <td class="px-6 py-4 whitespace-nowrap">
-                <div class="flex items-center">
-                  <div class="font-medium text-gray-900">{{ getShortReportLabel(report) }}</div>
-                  <div class="text-sm text-gray-500">{{ report.data_period }}</div>
-                </div>
-              </td>
+      <div class="p-4">
+        <DataTable
+          :columns="performanceColumns"
+          :rows="performanceRows"
+          row-key="id"
+          :loading="analyticsStore.loading.reports"
+          loading-message="Loading analysis results..."
+          empty-title="No analysis results found."
+          empty-message="Upload financial data to populate this performance table."
+          :page-size="10"
+          caption="Financial performance analysis table"
+        >
+          <template #cell-institution="{ row }">
+            <div class="min-w-[12rem]">
+              <div class="font-medium text-slate-900">{{ row.institution }}</div>
+              <div class="text-xs text-slate-500">{{ row.period || '—' }}</div>
+            </div>
+          </template>
 
-              <td class="px-6 py-4 whitespace-nowrap">
-                <div class="flex items-center space-x-3">
-                  <div class="flex-1">
-                    <div class="flex items-center">
-                      <div class="text-sm text-gray-500 mr-2">Score</div>
-                      <div class="text-lg font-bold" :class="getScoreTextColor(report.ai_analysis?.key_metrics?.net_income?.value / 1000)">
-                        {{ getPerformanceScore(report.ai_analysis?.key_metrics?.net_income?.value / 1000) }}
-                      </div>
-                    </div>
-                    <div class="w-24 bg-gray-200 rounded-full h-2">
-                      <div
-                        class="h-2 rounded-full transition-all duration-300"
-                        :class="getScoreBarColor(report.ai_analysis?.key_metrics?.net_income?.value / 1000)"
-                        :style="{ width: getPerformanceScore(report.ai_analysis?.key_metrics?.net_income?.value / 1000) + '%' }"
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              </td>
+          <template #cell-performance_score="{ row }">
+            <div class="min-w-[8rem]">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-slate-500">Score</span>
+                <span class="text-base font-bold tabular-nums" :class="getScoreTextColor(row.scoreBasis)">
+                  {{ row.performance_score }}
+                </span>
+              </div>
+              <div class="mt-1 w-24 bg-gray-200 rounded-full h-2">
+                <div
+                  class="h-2 rounded-full transition-all duration-300"
+                  :class="getScoreBarColor(row.scoreBasis)"
+                  :style="{ width: `${row.performance_score}%` }"
+                />
+              </div>
+            </div>
+          </template>
 
-              <td class="px-6 py-4 whitespace-nowrap">
-                <div class="flex items-center">
-                  <span
-                    v-if="report.ai_analysis?.risk_level"
-                    class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium"
-                    :class="getRiskBadgeClass(report.ai_analysis.risk_level)"
-                  >
-                    <svg v-if="report.ai_analysis.risk_level === 'low'" class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M9 12l2 2m0 0h1m-6 0H9m12 0v9m0 0h1m-6 0H9"/>
-                    </svg>
-                    <svg v-else-if="report.ai_analysis.risk_level === 'moderate'" class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M12 9v2m0 0h1m-6 0H9m12 0v9m0 0h1m-6 0H9"/>
-                    </svg>
-                    <svg v-else-if="report.ai_analysis.risk_level === 'high'" class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M12 8v4m0 0h1m-6 0H9m12 0v9m0 0h1m-6 0H9"/>
-                    </svg>
-                    {{ report.ai_analysis.risk_level || 'Unknown' }}
-                  </span>
-                </div>
-              </td>
+          <template #cell-risk_status="{ row }">
+            <StatusBadge :status="row.risk_status" :label="row.risk_status_label" />
+          </template>
 
-              <td class="px-6 py-4 whitespace-nowrap">
-                <div class="space-y-1">
-                  <div class="flex justify-between text-xs">
-                    <span class="text-gray-500">ROA</span>
-                    <span class="font-medium">{{ getMetricDisplay(report.data_summary?.sample_data?.roa) }}</span>
-                  </div>
-                  <div class="flex justify-between text-xs">
-                    <span class="text-gray-500">ROE</span>
-                    <span class="font-medium">{{ getMetricDisplay(report.data_summary?.sample_data?.roe) }}</span>
-                  </div>
-                  <div class="flex justify-between text-xs">
-                    <span class="text-gray-500">Efficiency</span>
-                    <span class="font-medium">{{ getMetricDisplay(report.data_summary?.sample_data?.efficiency_ratio) }}</span>
-                  </div>
-                </div>
-              </td>
+          <template #cell-key_metrics="{ row }">
+            <div class="space-y-1 min-w-[8rem]">
+              <div class="flex justify-between gap-4 text-xs">
+                <span class="text-slate-500">ROA</span>
+                <span class="font-medium tabular-nums">{{ row.roa }}</span>
+              </div>
+              <div class="flex justify-between gap-4 text-xs">
+                <span class="text-slate-500">ROE</span>
+                <span class="font-medium tabular-nums">{{ row.roe }}</span>
+              </div>
+              <div class="flex justify-between gap-4 text-xs">
+                <span class="text-slate-500">Efficiency</span>
+                <span class="font-medium tabular-nums">{{ row.efficiency }}</span>
+              </div>
+            </div>
+          </template>
 
-              <td class="px-6 py-4 whitespace-nowrap">
-                <div class="flex items-center space-x-1">
-                  <span v-if="getTrendDirection(report.data_summary?.sample_data?.roe) === 'up'" class="text-success-600 flex items-center text-sm">
-                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M13 7H7l-3 3 3 3h6l3-3-3-3z"/>
-                    </svg>
-                    Improving
-                  </span>
-                  <span v-else-if="getTrendDirection(report.data_summary?.sample_data?.roe) === 'down'" class="text-danger-600 flex items-center text-sm">
-                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M13 17l-5-5m0 0L8 12l-5 5m5-5v6m0 0h6"/>
-                    </svg>
-                    Declining
-                  </span>
-                  <span v-else class="text-gray-600 flex items-center text-sm">
-                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M9 12l2 2m0 0h1m-6 0H9m12 0v9m0 0h1m-6 0H9"/>
-                    </svg>
-                    Stable
-                  </span>
-                </div>
-              </td>
+          <template #cell-trend="{ row }">
+            <span class="text-sm" :class="row.trendClass">{{ row.trend_label }}</span>
+          </template>
 
-              <td class="px-6 py-4 whitespace-nowrap">
-                <div class="flex items-center space-x-2">
-                  <router-link
-                    :to="`/reports/${report.id}`"
-                    class="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
-                  >
-                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M10 12a2 2 0 100-4 2 2 0 000 4zm1-9a1 1 0 10-2 0v1a1 1 0 002 0V3z"/>
-                    </svg>
-                    View Details
-                  </router-link>
-                  <a
-                    :href="`/api/media/${report.id}/print/`"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-                  >
-                    PDF
-                  </a>
-                  <a
-                    :href="`/api/media/${report.id}/editable/`"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-                  >
-                    Word
-                  </a>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+          <template #cell-actions="{ row }">
+            <div class="flex flex-wrap items-center gap-1.5 min-w-[14rem]" @click.stop>
+              <router-link
+                :to="`/reports/${row.id}`"
+                class="inline-flex items-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                View Details
+              </router-link>
+              <a
+                :href="`/api/media/${row.id}/print/`"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Export PDF
+              </a>
+              <a
+                :href="`/api/media/${row.id}/editable/`"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Export Word
+              </a>
+            </div>
+          </template>
+        </DataTable>
       </div>
     </div>
 
@@ -583,6 +541,8 @@
 import { computed, onMounted, ref, nextTick } from 'vue'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { getShortReportLabel } from '@/utils/reportDisplay'
+import DataTable from '@/components/DataTable.vue'
+import StatusBadge from '@/components/StatusBadge.vue'
 
 const analyticsStore = useAnalyticsStore()
 
@@ -602,10 +562,14 @@ type AverageMetrics = {
 type ReportRecord = {
   id?: string
   bank_name?: string
+  data_period?: string
   overall_score?: number
   risk_level?: RiskLevel
   ai_analysis?: {
     risk_level?: RiskLevel
+    key_metrics?: {
+      net_income?: { value?: number }
+    }
   }
   data_summary?: {
     sample_data?: {
@@ -615,6 +579,38 @@ type ReportRecord = {
     }
   }
 }
+
+const performanceColumns = [
+  { key: 'institution', label: 'Institution', wrap: true, width: '14rem' },
+  { key: 'performance_score', label: 'Performance Score', width: '10rem' },
+  { key: 'risk_status', label: 'Risk Status', width: '8rem' },
+  { key: 'key_metrics', label: 'Key Metrics', width: '10rem' },
+  { key: 'trend', label: 'Trend', width: '8rem' },
+  { key: 'actions', label: 'Actions', width: '15rem' },
+]
+
+const performanceRows = computed(() =>
+  (analyticsStore.reports as ReportRecord[]).map((report) => {
+    const scoreBasis = Number(report.ai_analysis?.key_metrics?.net_income?.value || 0) / 1000
+    const risk = report.ai_analysis?.risk_level || report.risk_level || 'moderate'
+    const trend = getTrendDirection(Number(report.data_summary?.sample_data?.roe ?? 0))
+    return {
+      id: report.id,
+      institution: getShortReportLabel(report),
+      period: report.data_period || '',
+      performance_score: getPerformanceScore(scoreBasis),
+      scoreBasis,
+      risk_status: risk,
+      risk_status_label: String(risk).replace(/^\w/, (c) => c.toUpperCase()),
+      roa: getMetricDisplay(report.data_summary?.sample_data?.roa),
+      roe: getMetricDisplay(report.data_summary?.sample_data?.roe),
+      efficiency: getMetricDisplay(report.data_summary?.sample_data?.efficiency_ratio),
+      trend_label: trend === 'up' ? 'Improving' : trend === 'down' ? 'Declining' : 'Stable',
+      trendClass:
+        trend === 'up' ? 'text-emerald-700' : trend === 'down' ? 'text-red-700' : 'text-slate-600',
+    }
+  }),
+)
 
 // Chart refs
 const scoreChart = ref<HTMLElement | null>(null)
