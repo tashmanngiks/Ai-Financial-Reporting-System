@@ -602,9 +602,9 @@ def simple_upload_view(request):
 
         response_data = {
             'success': True,
-            'message': 'Report generated from your analysis prompt'
+            'message': 'Successful dataset upload'
             if comprehensive_generated
-            else 'Report uploaded successfully, but AI-enhanced analysis is currently unavailable.',
+            else 'Successful dataset upload. AI-enhanced analysis is currently unavailable.',
             'task_id': report_id,
             'id': report_id,
             'report_id': report_id,
