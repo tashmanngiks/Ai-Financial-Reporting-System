@@ -1,0 +1,20 @@
+
+{
+  "bank_name": "Sample Commercial Bank",
+  "period": "Q1 2026",
+  "dataset_type": "money_market",
+  "money_market": {
+    "treasury_bills": 0.045,
+    "commercial_paper": 0.050,
+    "certificates_of_deposit": 0.048,
+    "interbank_rates": 0.047,
+    "repo_rates": 0.046,
+    "liquidity": "adequate"
+  },
+  "financial_summary": {
+    "currency": "USD",
+    "total_money_market_investments": 15000000,
+    "interest_income": 180000,
+    "average_maturity_days": 90
+  }
+}

@@ -2598,7 +2598,7 @@ def login_view(request):
         
         if not username or not password:
             return Response(
-                {'error': 'Username and password are required'},
+                {'error': 'Email or password is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -2618,7 +2618,7 @@ def login_view(request):
             })
         else:
             return Response(
-                {'error': 'Invalid credentials'},
+                {'error': 'Invalid email or password'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
             

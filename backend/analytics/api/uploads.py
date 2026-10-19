@@ -194,7 +194,7 @@ def _collect_text_tokens(value: Any, parts: list[str], depth: int = 0) -> None:
 def _score_dataset_types(json_data: Any) -> dict[str, int]:
     parts: list[str] = []
     _collect_text_tokens(json_data, parts)
-    text = ' '.join(parts).lower()
+    text = ' '.join(parts).lower().replace('_', ' ')
 
     scores: dict[str, int] = {}
     for dataset_type, rule in DATASET_TYPE_RULES.items():

@@ -26,11 +26,11 @@ def simple_login_view(request):
         password = data.get('password')
 
         if not username or not password:
-            return JsonResponse({'error': 'Username and password are required'}, status=400)
+            return JsonResponse({'error': 'Email or password is required'}, status=400)
 
         user = authenticate(request, username=username, password=password)
         if user is None:
-            return JsonResponse({'error': 'Invalid credentials'}, status=401)
+            return JsonResponse({'error': 'Invalid email or password'}, status=401)
 
         login(request, user)
         return JsonResponse({
