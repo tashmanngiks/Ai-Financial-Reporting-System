@@ -197,13 +197,13 @@
               </div>
               <div class="flex items-center space-x-4">
                 <div class="text-right">
-                  <div class="text-lg font-bold text-gray-900">{{ report.overall_score }}/100</div>
+                  <div class="text-lg font-bold text-gray-900">{{ resolveReportScore(report).toFixed(1) }}/100</div>
                   <div class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
-                       :class="report.risk_level === 'low' ? 'bg-green-100 text-green-800' :
-                               report.risk_level === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
-                               report.risk_level === 'high' ? 'bg-orange-100 text-orange-800' :
+                       :class="resolveReportRisk(report) === 'low' ? 'bg-green-100 text-green-800' :
+                               resolveReportRisk(report) === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
+                               resolveReportRisk(report) === 'high' ? 'bg-orange-100 text-orange-800' :
                                'bg-red-100 text-red-800'">
-                    {{ report.risk_level }}
+                    {{ resolveReportRisk(report) }}
                   </div>
                 </div>
                 <router-link
@@ -369,36 +369,40 @@
 import { computed } from 'vue'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { getShortReportLabel } from '@/utils/reportDisplay'
+import {
+  averageReportScore,
+  isHighRiskReport,
+  isProcessingReport,
+  resolveReportRisk,
+  resolveReportScore,
+  type RiskLevel,
+  type ReportMetricsSource,
+} from '@/utils/reportMetrics'
 
 const analyticsStore = useAnalyticsStore()
 
-type RiskLevel = 'low' | 'moderate' | 'high' | 'critical'
-
-type ReportSummary = {
+type ReportSummary = ReportMetricsSource & {
   id?: string
   bank_name?: string
   data_period?: string
-  overall_score?: number
-  risk_level?: RiskLevel
 }
 
 // Computed properties
 const averageScore = computed(() => {
   const reports = Array.isArray(analyticsStore.reports) ? (analyticsStore.reports as ReportSummary[]) : []
-  if (reports.length === 0) return 0
-  const total = reports.reduce((sum: number, report: ReportSummary) => sum + (report.overall_score || 0), 0)
-  return total / analyticsStore.reports.length
+  return averageReportScore(reports)
 })
 
 const highRiskCount = computed(() => {
   const reports = Array.isArray(analyticsStore.reports) ? (analyticsStore.reports as ReportSummary[]) : []
-  return reports.filter((report: ReportSummary) =>
-    report.risk_level === 'high' || report.risk_level === 'critical'
-  ).length
+  return reports.filter((report) => isHighRiskReport(report)).length
 })
 
 const processingCount = computed(() => {
-  return analyticsStore.uploadStatus === 'processing' ? 1 : 0
+  const reports = Array.isArray(analyticsStore.reports) ? (analyticsStore.reports as ReportSummary[]) : []
+  const fromReports = reports.filter((report) => isProcessingReport(report)).length
+  const fromUpload = analyticsStore.uploadStatus === 'processing' ? 1 : 0
+  return Math.max(fromReports, fromUpload)
 })
 
 // Methods
@@ -411,8 +415,6 @@ const getStatusBadgeClass = (riskLevel?: RiskLevel) => {
   }
   return riskLevel ? classes[riskLevel] : 'status-info'
 }
-
-// No mock data function - using real API endpoints only
 
 // Initialize
 analyticsStore.fetchReports()

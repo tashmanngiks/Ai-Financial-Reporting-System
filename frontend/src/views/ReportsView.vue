@@ -78,7 +78,7 @@
 
           <!-- KPI Value Row -->
           <div class="mb-3">
-            <p class="text-3xl font-bold text-gray-900 leading-none">{{ analyticsStore.reports.length > 0 ? (analyticsStore.reports.reduce((sum, report) => sum + report.overall_score, 0) / analyticsStore.reports.length).toFixed(1) : '0.0' }}</p>
+            <p class="text-3xl font-bold text-gray-900 leading-none">{{ averagePerformance.toFixed(1) }}</p>
           </div>
 
           <!-- Icon in Right Upper Corner -->
@@ -106,7 +106,7 @@
 
           <!-- KPI Value Row -->
           <div class="mb-3">
-            <p class="text-3xl font-bold text-gray-900 leading-none">{{ analyticsStore.reports.filter(report => report.risk_level === 'high' || report.risk_level === 'critical').length }}</p>
+            <p class="text-3xl font-bold text-gray-900 leading-none">{{ highRiskInstitutions }}</p>
           </div>
 
           <!-- Icon in Right Upper Corner -->
@@ -417,6 +417,12 @@ import { useAnalyticsStore } from '@/stores/analytics'
 import { getShortReportLabel } from '@/utils/reportDisplay'
 import { getReportDownloadUrl } from '@/services/api'
 import { formatDateTime, DATASET_TYPE_LABELS } from '@/utils/tableFormat'
+import {
+  averageReportScore,
+  isHighRiskReport,
+  resolveReportRisk,
+  resolveReportScore,
+} from '@/utils/reportMetrics'
 import DataTable from '@/components/DataTable.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import {
@@ -443,6 +449,11 @@ const reportListColumns = [
   { key: 'actions', label: 'Actions', width: '15rem' },
 ]
 
+const averagePerformance = computed(() => averageReportScore(analyticsStore.reports || []))
+const highRiskInstitutions = computed(() =>
+  (analyticsStore.reports || []).filter((report) => isHighRiskReport(report)).length,
+)
+
 const filteredReports = computed(() => {
   let reports = analyticsStore.reports
 
@@ -454,15 +465,15 @@ const filteredReports = computed(() => {
   }
 
   if (filters.value.riskLevel) {
-    reports = reports.filter(report => report.risk_level === filters.value.riskLevel)
+    reports = reports.filter(report => resolveReportRisk(report) === filters.value.riskLevel)
   }
 
   if (filters.value.minScore !== null) {
-    reports = reports.filter(report => report.overall_score >= filters.value.minScore)
+    reports = reports.filter(report => resolveReportScore(report) >= filters.value.minScore)
   }
 
   if (filters.value.maxScore !== null) {
-    reports = reports.filter(report => report.overall_score <= filters.value.maxScore)
+    reports = reports.filter(report => resolveReportScore(report) <= filters.value.maxScore)
   }
 
   return reports
@@ -471,17 +482,18 @@ const filteredReports = computed(() => {
 const reportTableRows = computed(() =>
   filteredReports.value.map((report) => {
     const datasetKey = String(report.dataset_type || report.metadata?.dataset_type || '').toLowerCase()
-    const risk = report.risk_level || report.ai_analysis?.risk_level || 'moderate'
+    const risk = resolveReportRisk(report)
+    const score = resolveReportScore(report)
     return {
       id: report.id,
       report_name: getShortReportLabel(report),
       period: report.data_period || '',
       report_type: DATASET_TYPE_LABELS[datasetKey] || report.report_type || 'Analysis',
-      created_date: report.generated_at || report.created_at || report.metadata?.generated_at,
+      created_date: report.generated_at || report.created_at || report.metadata?.generated_at || report.uploaded_at,
       status: report.status || 'completed',
       risk_level: risk,
       risk_label: String(risk).replace(/^\w/, (c) => c.toUpperCase()),
-      overall_score: report.overall_score ?? '—',
+      overall_score: score,
     }
   }),
 )

@@ -541,13 +541,19 @@
 import { computed, onMounted, ref, nextTick } from 'vue'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { getShortReportLabel } from '@/utils/reportDisplay'
+import {
+  averageReportScore,
+  isHighRiskReport,
+  resolveReportRisk,
+  resolveReportScore,
+  type RiskLevel,
+} from '@/utils/reportMetrics'
 import DataTable from '@/components/DataTable.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 
 const analyticsStore = useAnalyticsStore()
 
 type TrendDirection = 'up' | 'down' | 'stable'
-type RiskLevel = 'low' | 'moderate' | 'high' | 'critical'
 type PartialRiskLevel = 'low' | 'moderate' | 'high'
 
 type AverageMetrics = {
@@ -591,15 +597,15 @@ const performanceColumns = [
 
 const performanceRows = computed(() =>
   (analyticsStore.reports as ReportRecord[]).map((report) => {
-    const scoreBasis = Number(report.ai_analysis?.key_metrics?.net_income?.value || 0) / 1000
-    const risk = report.ai_analysis?.risk_level || report.risk_level || 'moderate'
+    const score = resolveReportScore(report)
+    const risk = resolveReportRisk(report)
     const trend = getTrendDirection(Number(report.data_summary?.sample_data?.roe ?? 0))
     return {
       id: report.id,
       institution: getShortReportLabel(report),
       period: report.data_period || '',
-      performance_score: getPerformanceScore(scoreBasis),
-      scoreBasis,
+      performance_score: getPerformanceScore(score),
+      scoreBasis: score,
       risk_status: risk,
       risk_status_label: String(risk).replace(/^\w/, (c) => c.toUpperCase()),
       roa: getMetricDisplay(report.data_summary?.sample_data?.roa),
@@ -689,23 +695,19 @@ const riskDistribution = computed(() => {
     critical: 0,
   }
   reports.forEach((report: ReportRecord) => {
-    const riskLevel = report.ai_analysis?.risk_level
-    if (riskLevel) {
-      distribution[riskLevel]++
-    }
+    distribution[resolveReportRisk(report)]++
   })
   return distribution
 })
 
 const averageScore = computed(() => {
   const reports = Array.isArray(analyticsStore.reports) ? (analyticsStore.reports as ReportRecord[]) : []
-  if (reports.length === 0) return 0
-  return reports.reduce((sum: number, r: ReportRecord) => sum + (r.overall_score || 0), 0) / reports.length
+  return averageReportScore(reports)
 })
 
 const highRiskCount = computed(() => {
   const reports = Array.isArray(analyticsStore.reports) ? (analyticsStore.reports as ReportRecord[]) : []
-  return reports.filter((r: ReportRecord) => r.risk_level === 'high' || r.risk_level === 'critical').length
+  return reports.filter((r: ReportRecord) => isHighRiskReport(r)).length
 })
 
 // Methods
