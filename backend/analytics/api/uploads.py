@@ -482,6 +482,8 @@ def simple_upload_view(request):
             'detected_dataset_type': detected_dataset_type or selected_dataset_type,
             'task_id': report_id,
             'uploaded_at': current_time,
+            'generated_at': current_time,
+            'created_at': current_time,
             'status': 'processing',
             'progress': 35,
             'bank_name': bank_name,
@@ -552,6 +554,8 @@ def simple_upload_view(request):
             'detected_dataset_type': detected_dataset_type or selected_dataset_type,
             'task_id': report_id,
             'uploaded_at': current_time,
+            'generated_at': current_time,
+            'created_at': current_time,
             'status': 'completed',
             'data_summary': {
                 **build_data_summary(original_json),

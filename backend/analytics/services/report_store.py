@@ -56,7 +56,20 @@ def list_reports(request=None) -> list[dict[str, Any]]:
         queryset = PersistedReport.objects.filter(Q(owner=user) | Q(owner__isnull=True))
     else:
         queryset = PersistedReport.objects.all()
-    return [record.report_data for record in queryset]
+
+    reports: list[dict[str, Any]] = []
+    for record in queryset.order_by('-created_at'):
+        report = dict(record.report_data or {})
+        created_at = record.created_at.isoformat() if record.created_at else None
+        # Ensure UI always has a parseable creation timestamp.
+        if created_at:
+            report.setdefault('created_at', created_at)
+            report.setdefault('generated_at', report.get('uploaded_at') or created_at)
+            metadata = dict(report.get('metadata') or {})
+            metadata.setdefault('generated_at', report.get('uploaded_at') or created_at)
+            report['metadata'] = metadata
+        reports.append(report)
+    return reports
 
 
 def get_report(report_id: str) -> dict[str, Any] | None:
