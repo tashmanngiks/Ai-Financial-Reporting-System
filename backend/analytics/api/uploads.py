@@ -13,6 +13,7 @@ from django.views.decorators.http import require_http_methods
 from ..services.report_store import get_report, save_report, update_report
 from django.conf import settings
 from ..services.prompt_module_store import apply_section_traceability
+from ..services.report_scoring import derive_report_score_and_risk
 from ..services.analysis_prompt_defaults import (
     ANNUAL_FINANCIAL_ANALYSIS_ID,
     CREDIT_RISK_ANALYSIS_ID,
@@ -544,6 +545,14 @@ def simple_upload_view(request):
 
         prompt_title = dataset_rule['label']
 
+        score_info = derive_report_score_and_risk(original_json, ai_analysis)
+        if isinstance(ai_analysis, dict):
+            ai_analysis = {
+                **ai_analysis,
+                'risk_level': score_info['risk_level'],
+                'overall_score': score_info['overall_score'],
+            }
+
         report_data = {
             'id': report_id,
             'filename': uploaded_file.name,
@@ -557,6 +566,9 @@ def simple_upload_view(request):
             'generated_at': current_time,
             'created_at': current_time,
             'status': 'completed',
+            'overall_score': score_info['overall_score'],
+            'risk_level': score_info['risk_level'],
+            'score_source': score_info.get('score_source'),
             'data_summary': {
                 **build_data_summary(original_json),
                 'ai_insights': ai_analysis,

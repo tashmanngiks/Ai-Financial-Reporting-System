@@ -57,6 +57,8 @@ def list_reports(request=None) -> list[dict[str, Any]]:
     else:
         queryset = PersistedReport.objects.all()
 
+    from .report_scoring import enrich_report_with_score
+
     reports: list[dict[str, Any]] = []
     for record in queryset.order_by('-created_at'):
         report = dict(record.report_data or {})
@@ -68,22 +70,24 @@ def list_reports(request=None) -> list[dict[str, Any]]:
             metadata = dict(report.get('metadata') or {})
             metadata.setdefault('generated_at', report.get('uploaded_at') or created_at)
             report['metadata'] = metadata
-        reports.append(report)
+        reports.append(enrich_report_with_score(report))
     return reports
 
 
 def get_report(report_id: str) -> dict[str, Any] | None:
+    from .report_scoring import enrich_report_with_score
+
     report_id = str(report_id)
     cached = _cache_get(report_id)
     if cached:
-        return cached
+        return enrich_report_with_score(dict(cached))
 
     try:
         record = PersistedReport.objects.get(pk=report_id)
     except (PersistedReport.DoesNotExist, ValueError):
         return None
 
-    report = record.report_data
+    report = enrich_report_with_score(dict(record.report_data or {}))
     _cache_set(report_id, report)
     return report
 

@@ -29,6 +29,7 @@ from openpyxl.styles import Font, Alignment
 
 from .services.dynamic_report_builder import build_dynamic_report_sections, build_report_context
 from .services.report_prompt_registry import get_report_prompt_registry
+from .services.report_scoring import derive_report_score_and_risk
 from .services.report_store import get_report as get_persisted_report
 from .services.report_store import list_report_ids
 from .services.report_store import list_reports as list_persisted_reports
@@ -518,6 +519,14 @@ def simple_upload_view(request):
         if prompt_title.startswith('#'):
             prompt_title = prompt_title.lstrip('#').strip()
         prompt_title = prompt_title[:120] or f'{bank_name} Analysis'
+
+        score_info = derive_report_score_and_risk(original_json, ai_analysis)
+        if isinstance(ai_analysis, dict):
+            ai_analysis = {
+                **ai_analysis,
+                'risk_level': score_info['risk_level'],
+                'overall_score': score_info['overall_score'],
+            }
         
         report_data = {
             'id': report_id,
@@ -527,7 +536,12 @@ def simple_upload_view(request):
             'user_prompt': prompt,
             'task_id': report_id,
             'uploaded_at': current_time,
+            'generated_at': current_time,
+            'created_at': current_time,
             'status': 'completed',
+            'overall_score': score_info['overall_score'],
+            'risk_level': score_info['risk_level'],
+            'score_source': score_info.get('score_source'),
             'data_summary': {
                 **build_data_summary(original_json),
                 'ai_insights': ai_analysis,
