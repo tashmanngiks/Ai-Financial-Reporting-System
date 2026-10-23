@@ -7,6 +7,7 @@ export const useAnalyticsStore = defineStore('analytics', {
     currentUpload: null,
     uploadProgress: 0,
     uploadStatus: 'idle', // idle, uploading, processing, completed, failed
+    uploadSuccessMessage: null,
 
     // Task state
     currentTask: null,
@@ -65,6 +66,7 @@ export const useAnalyticsStore = defineStore('analytics', {
 
       this.loading.upload = true
       this.errors.upload = null
+      this.uploadSuccessMessage = null
       this.uploadStatus = 'processing'
       this.taskProgress = 10
 
@@ -76,6 +78,7 @@ export const useAnalyticsStore = defineStore('analytics', {
         this.taskProgress = 100
         this.currentReport = data.id || data.report_id
         this.reportDetail = data
+        this.uploadSuccessMessage = data.message || 'Successful dataset upload'
 
         if (data.ai_enhanced && data.comprehensive_analysis?.length) {
           this.uploadStatus = 'completed'
@@ -93,6 +96,7 @@ export const useAnalyticsStore = defineStore('analytics', {
         const msg = error.response?.data?.error || error.message
         this.errors.upload = msg
         this.uploadStatus = 'failed'
+        this.uploadSuccessMessage = null
         this.currentReport = null
         throw handleApiError(error)
       } finally {
@@ -414,6 +418,7 @@ export const useAnalyticsStore = defineStore('analytics', {
       this.taskStatus = null
       this.taskProgress = 0
       this.uploadStatus = 'idle'
+      this.uploadSuccessMessage = null
       this.errors.upload = null
     },
 

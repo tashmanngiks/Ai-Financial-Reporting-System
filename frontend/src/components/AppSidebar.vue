@@ -49,7 +49,7 @@
                     {{ getShortReportLabel(report) }}
                   </div>
                   <div class="text-xs text-gray-500">
-                    {{ formatDate(report.generated_at) }}
+                    {{ formatReportDate(report) }}
                   </div>
                 </div>
               </div>
@@ -119,14 +119,43 @@ const isActiveRoute = (to: string) => {
   return false
 }
 
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString)
+type ReportDateSource = {
+  generated_at?: string | null
+  created_at?: string | null
+  uploaded_at?: string | null
+  metadata?: { generated_at?: string | null; report_date?: string | null } | null
+}
+
+const resolveReportCreatedAt = (report: ReportDateSource) =>
+  report.generated_at ||
+  report.created_at ||
+  report.uploaded_at ||
+  report.metadata?.generated_at ||
+  report.metadata?.report_date ||
+  null
+
+const parseReportDate = (value: string | null | undefined) => {
+  if (!value) return null
+  const raw = String(value).trim()
+  if (!raw) return null
+
+  // Backend often stores "YYYY-MM-DD HH:MM:SS" — normalize for reliable parsing.
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(raw)
+    ? raw.replace(' ', 'T')
+    : raw
+
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+const formatReportDate = (report: ReportDateSource) => {
+  const date = parseReportDate(resolveReportCreatedAt(report))
+  if (!date) return '—'
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
+    year: 'numeric',
   })
 }
-
-// No mock data function - using real API endpoints only
 
 </script>

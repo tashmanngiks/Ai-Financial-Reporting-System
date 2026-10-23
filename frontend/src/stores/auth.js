@@ -58,8 +58,13 @@ export const useAuthStore = defineStore('auth', {
 
         return { success: true, user: this.user }
       } catch (error) {
-        this.error = error.message || 'Login failed'
-        throw error
+        const apiMessage =
+          error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          error?.message ||
+          'Invalid email or password'
+        this.error = apiMessage
+        throw new Error(apiMessage)
       } finally {
         this.loading = false
       }

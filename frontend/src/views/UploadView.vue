@@ -2,6 +2,16 @@
   <div class="p-6">
     <!-- After generate: Overleaf-style prompt ↔ report split (stays on Upload) -->
     <div v-if="analyticsStore.uploadStatus === 'completed' && analyticsStore.currentReport" class="space-y-4">
+      <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-start gap-3">
+        <svg class="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m7 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+          <p class="font-semibold">{{ analyticsStore.uploadSuccessMessage || 'Successful dataset upload' }}</p>
+          <p class="text-emerald-700 mt-0.5">Your dataset was uploaded and the report is ready to review.</p>
+        </div>
+      </div>
+
       <div class="bg-white rounded-2xl border border-gray-200 shadow-sm px-5 py-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold text-gray-900">Report ready — refine prompts beside each section</h2>

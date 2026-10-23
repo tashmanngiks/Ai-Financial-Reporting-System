@@ -121,14 +121,28 @@
             </div>
           </div>
 
+          <!-- Success Message -->
+          <div v-if="success" class="rounded-lg bg-emerald-900/20 border border-emerald-700 p-4">
+            <div class="flex gap-3">
+              <svg class="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m7 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <h3 class="text-sm font-medium text-emerald-300">
+                  {{ success }}
+                </h3>
+              </div>
+            </div>
+          </div>
+
           <!-- Submit Button -->
           <button
             type="submit"
-            :disabled="loading"
+            :disabled="loading || Boolean(success)"
             class="w-full py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-blue-700 disabled:from-gray-500 disabled:to-gray-600 transition duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none flex items-center justify-center gap-2"
           >
             <div v-if="loading" class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            <span>{{ loading ? 'Signing in...' : 'Sign in' }}</span>
+            <span>{{ loading ? 'Signing in...' : success ? 'Redirecting...' : 'Sign in' }}</span>
           </button>
         </form>
       </div>
@@ -154,6 +168,7 @@ const authStore = useAuthStore()
 // Reactive state
 const loading = ref(false)
 const error = ref('')
+const success = ref('')
 const showPassword = ref(false)
 
 const loginForm = reactive({
@@ -166,6 +181,7 @@ const loginForm = reactive({
 const handleLogin = async () => {
   loading.value = true
   error.value = ''
+  success.value = ''
 
   try {
     await authStore.login({
@@ -173,10 +189,17 @@ const handleLogin = async () => {
       password: loginForm.password
     })
 
-    // Redirect to dashboard on success
+    success.value = 'Login successful'
+    // Brief pause so the user can see the success message before redirect
+    await new Promise((resolve) => setTimeout(resolve, 900))
     router.push('/')
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Login failed. Please try again.'
+    success.value = ''
+    const apiMessage =
+      err instanceof Error
+        ? err.message
+        : err?.response?.data?.error || err?.response?.data?.message
+    error.value = apiMessage || 'Invalid email or password'
   } finally {
     loading.value = false
   }
